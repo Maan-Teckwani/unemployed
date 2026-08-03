@@ -88,7 +88,7 @@ Open **http://localhost:3000**.
 
 If Ollama is installed but not reachable, `./run.sh` now auto-attempts a
 recovery on macOS/Linux before failing:
-- checks who is listening on `11434` and writes diagnostics to
+- (if `lsof` is available) records what is listening on `11434` to
   `/tmp/ollama-port-11434.txt`
 - clears stale `ollama serve` processes
 - retries startup and prints the last `/tmp/ollama-serve.log` lines if it still

@@ -59,6 +59,11 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
   if [ "$(uname)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
     # Desktop installs need the app running once before CLI commands can connect.
     open -gj -a Ollama >/dev/null 2>&1 || true
+    # Give the desktop daemon a moment to come up before attempting cleanup/start.
+    for _ in 1 2 3 4 5; do
+      curl -sf http://localhost:11434/api/version >/dev/null 2>&1 && break
+      sleep 1
+    done
   fi
 
   if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
