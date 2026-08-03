@@ -73,7 +73,15 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
     else
       printf "%s\n" "lsof not found; unable to capture port diagnostic for 11434." >"$OLLAMA_PORT_DIAG"
     fi
-    pkill -f 'ollama serve' >/dev/null 2>&1 || true
+    if command -v lsof >/dev/null 2>&1; then
+      # Kill only listeners on 11434 to avoid stopping an Ollama server running on a custom port.
+      pids="$(lsof -nP -iTCP:11434 -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $2}' | sort -u)"
+      if [ -n "$pids" ]; then
+        kill $pids >/dev/null 2>&1 || true
+      fi
+    else
+      pkill -f 'ollama serve' >/dev/null 2>&1 || true
+    fi
     ok "Starting the Ollama server..."
     nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
     OLLAMA_SERVE_PID=$!
