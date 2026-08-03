@@ -68,7 +68,11 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
 
   if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
     # Self-heal common stale local process issue before trying to start again.
-    lsof -nP -iTCP:11434 -sTCP:LISTEN >"$OLLAMA_PORT_DIAG" 2>/dev/null || true
+    if command -v lsof >/dev/null 2>&1; then
+      lsof -nP -iTCP:11434 -sTCP:LISTEN >"$OLLAMA_PORT_DIAG" 2>/dev/null || true
+    else
+      printf "%s\n" "lsof not found; unable to capture port diagnostic for 11434." >"$OLLAMA_PORT_DIAG"
+    fi
     pkill -f 'ollama serve' >/dev/null 2>&1 || true
     ok "Starting the Ollama server..."
     nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
@@ -85,9 +89,9 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
   done
 
   if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
-    LOG_TAIL="$(tail -n 5 "$OLLAMA_LOG" 2>/dev/null || true)"
+    LOG_TAIL="$(tail -n 50 "$OLLAMA_LOG" 2>/dev/null || true)"
     BIND_ERR=0
-    if printf "%s" "$LOG_TAIL" | grep -qi "bind: operation not permitted"; then
+    if [ -f "$OLLAMA_LOG" ] && grep -qi "bind: operation not permitted" "$OLLAMA_LOG"; then
       BIND_ERR=1
     fi
     if [ "$(uname)" = "Darwin" ]; then
