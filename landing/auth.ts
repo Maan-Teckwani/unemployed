@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
+import { rememberEmail } from "@/lib/db";
+
 /**
  * Google sign-in, with the session in a signed cookie rather than the database.
  *
@@ -24,10 +26,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // See app/auth-error/page.tsx.
   pages: { error: "/auth-error" },
   callbacks: {
-    jwt({ token, profile }) {
-      // `profile` is only present on the sign-in pass, so the value is copied
+    async jwt({ token, profile }) {
+      // `profile` is only present on the sign-in pass, so the values are copied
       // once and then carried by the token on every request after.
       if (profile?.sub) token.sub = profile.sub;
+      if (profile?.email) token.email = profile.email;
+
+      // Fill in the address for anyone who joined before there was a column to
+      // put it in. Gated on `profile`, so this is one statement per sign-in
+      // rather than one per request, and `rememberEmail` ignores rows that
+      // already have one.
+      //
+      // Wrapped because this is the sign-in path. Sixty nine people an hour
+      // come through here, and not being able to reach one of them later is a
+      // far smaller problem than not letting them in now, so a database that
+      // is down or slow must lose the address rather than the signup.
+      if (profile?.sub && profile?.email) {
+        try {
+          await rememberEmail(profile.sub, profile.email);
+        } catch (error) {
+          console.error("could not record email", error);
+        }
+      }
+
       return token;
     },
     session({ session, token }) {

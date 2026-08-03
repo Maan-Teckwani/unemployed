@@ -18,6 +18,14 @@ export function db() {
   return client;
 }
 
+/**
+ * A row as the rest of the site is allowed to see it.
+ *
+ * There is deliberately no `email` here, and no read query below selects one.
+ * This type is handed to client components, which means every field on it is
+ * serialised into the HTML that goes to whoever is looking at the page. The
+ * address is written by `rememberEmail` and read by nothing.
+ */
 export type SignupRow = {
   // bigint, which the driver hands back as a string rather than a number.
   id: string;
@@ -127,6 +135,25 @@ export type ExperienceRow = {
   gender: "female" | "male" | "neutral";
   rounds: ExperienceRound[];
 };
+
+/**
+ * Record the email on a Google account's row, if it does not have one yet.
+ *
+ * `where email is null` rather than a plain assignment, so this is idempotent
+ * and so a sign-in can never quietly overwrite an address with a different one.
+ * Rows that predate the column are filled in the next time that person signs
+ * in, which is the only way they can be: their address was never stored, and
+ * `google_sub` is opaque with no route back to it.
+ *
+ * Returns nothing. Nothing on the site reads an address back out.
+ */
+export async function rememberEmail(sub: string, email: string): Promise<void> {
+  const sql = db();
+  await sql`
+    update signups set email = ${email}
+    where google_sub = ${sub} and email is null
+  `;
+}
 
 /**
  * The row a Google account owns, or null if they signed in but never finished

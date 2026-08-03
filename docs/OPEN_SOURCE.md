@@ -153,7 +153,7 @@ Structure:
 
 4. **Three screenshots**: today's list, the "why" breakdown, a generated resume
    with source links.
-5. **Link to the repo.** The app itself runs locally with no signup. The landing page includes an optional "wall" where visitors leave a name, country, and gender to get an avatar, but there is no email capture, preserving the privacy claim.
+5. **Link to the repo.** The app itself runs locally with no signup. The landing page includes an optional "wall" where visitors leave a name, country, and gender to get an avatar, and signing in with Google keeps their email address so there is a way to reach them. Nothing about the wall touches the local tool, whose privacy claim is about your resume never leaving your laptop.
 
 ---
 

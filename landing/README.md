@@ -16,8 +16,13 @@ sign-in button that cannot be used. Neither takes the site down.
 
 ## Setting up Google sign-in
 
-Signing in is only used to tell two people apart. No email address is stored,
-and the avatar on the wall is drawn, not taken from the Google account.
+Signing in tells two people apart and gives an address to reach them on. The
+email is stored, is never shown on the wall and is never read back out by any
+page; the avatar is drawn, not taken from the Google account.
+
+Rows created before the `email` column existed have none, and cannot be given
+one retroactively: `google_sub` is opaque and Google offers no lookup from it
+to an address. They are filled in the next time that person signs in.
 
 **1. Create the OAuth client**
 

@@ -92,15 +92,18 @@ export async function POST(request: Request) {
     // The rate limit lives inside the insert, so it costs no extra round trip
     // and it holds across serverless instances, where an in-memory counter
     // would count only the requests that happened to land on the same one.
+    //
+    // The email goes in but never comes back out: what the `returning` clause
+    // hands over becomes a SignupRow, and a SignupRow is serialised into a page.
     const rows = (await sql`
       with recent as (
         select count(*)::int as n from signups
         where ip_hash = ${ipHash(request)}
           and created_at > now() - make_interval(mins => ${WINDOW_MINUTES})
       ), inserted as (
-        insert into signups (name, country, gender, seed, ip_hash, google_sub)
+        insert into signups (name, country, gender, seed, ip_hash, google_sub, email)
         select ${name}, ${country.toUpperCase()}, ${chosenGender}, ${seed},
-               ${ipHash(request)}, ${googleSub}
+               ${ipHash(request)}, ${googleSub}, ${session.user?.email ?? null}
         from recent where n < ${MAX_PER_IP}
         returning id, name, country, gender, seed, created_at
       )

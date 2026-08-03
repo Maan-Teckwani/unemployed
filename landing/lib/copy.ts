@@ -348,12 +348,12 @@ export const copy = {
     signOut: "Sign out",
     signInHeading: "Sign in to join the wall.",
     signInBody:
-      "One tap with Google. No password to make up, and no email from us afterwards.",
+      "One tap with Google. No password to make up, and nothing to log into later.",
     profileHeading: "Now pick a name and a face.",
     profileBody:
-      "This is what everyone else sees. Your real name, your email and your Google picture are not stored and never appear on the wall.",
+      "This is what everyone else sees. Your real name and your Google picture are not stored and never appear on the wall.",
     nameFromGoogle: "Taken from your Google account. Change it to whatever you want shown.",
-    whyGoogle: "Google is only used to tell two people apart. Nothing is posted on your behalf.",
+    whyGoogle: "Google tells two people apart, and gives us an address to reach you on. Your email is kept, is never shown on the wall, and is never given to anyone else. Nothing is posted on your behalf.",
     notYou: "Wrong account?",
     signedInAs: (name: string) => `Signed in as ${name}`,
 
@@ -378,7 +378,7 @@ export const copy = {
   join: {
     label: "The wall",
     heading: "Put yourself on the wall.",
-    body: "A name, where you are, and a face. No email, nothing gets sent to you, and there is nothing to log into later.",
+    body: "A name, where you are, and a face. That is all anyone else sees. Your email is kept so we can reach you about the tool, and there is nothing to log into later.",
     why: "It is here so the next person landing on this page can see they are not the only one doing this.",
     nameLabel: "What should we call you",
     namePlaceholder: "first name + last name",
