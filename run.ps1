@@ -27,13 +27,89 @@ $Model = "llama3.2:3b"
 function Say($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 
-function Need($cmd, $name, $how) {
-    if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-        Write-Host "`n$name is not installed." -ForegroundColor Red
-        Write-Host "  $how"
-        Write-Host "  Then open a NEW terminal and run this script again."
-        exit 1
+function Have($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
+
+function Update-Path {
+    <#
+      Put anything just installed onto this process's PATH.
+
+      An installer writes the machine and user PATH into the registry, but a
+      process that is already running keeps the copy it started with. That is
+      the entire reason this script used to end with "open a NEW terminal and
+      run this again" after naming something missing. Rebuilding the variable
+      here lets the install and the thing that needs it happen in one run,
+      which is the difference between four commands and a scavenger hunt.
+    #>
+    $parts = @(
+        [Environment]::GetEnvironmentVariable("Path", "Machine"),
+        [Environment]::GetEnvironmentVariable("Path", "User")
+    ) | Where-Object { $_ }
+    $env:Path = $parts -join ";"
+
+    # Ollama installs per user, and is the one most likely to be left off the
+    # PATH we can see even after a refresh.
+    $ollama = Join-Path $env:LOCALAPPDATA "Programs\Ollama"
+    if ((Test-Path $ollama) -and ($env:Path -notlike "*$ollama*")) {
+        $env:Path = "$env:Path;$ollama"
     }
+}
+
+function Install-Winget($name, $id) {
+    <#
+      Install one package and refresh the PATH. Says nothing about whether it
+      worked; every caller decides that by looking for the command afterwards.
+
+      winget is left to write straight to the console because this can be a
+      long download and a silent screen reads as a hang. $ErrorActionPreference
+      is relaxed around it for the reason described on Probe below: under
+      "Stop", anything a native command puts on stderr becomes a terminating
+      error, and winget is chatty on stderr even when it succeeds.
+    #>
+    if (-not (Have "winget")) { return }
+
+    Say "Installing $name"
+    Ok "Windows may ask for permission. Say yes."
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # --silent keeps the vendor installer's own windows out of the way. The
+        # two agreement flags stop winget stopping to ask a question nobody is
+        # watching for.
+        $flags = @(
+            "install", "--id", $id, "-e", "--source", "winget", "--silent",
+            "--accept-package-agreements", "--accept-source-agreements"
+        )
+        & winget @flags
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    Update-Path
+}
+
+function Ensure($cmd, $name, $id, $how) {
+    <#
+      Install $name if $cmd is missing, and say so plainly if that did not work.
+
+      Success is "the command resolves now", never winget's exit code. winget
+      reports non-zero for perfectly good outcomes, the package already being
+      present among them, so its exit code answers a different question from
+      the one being asked here.
+
+      Every failure path ends exactly where this function used to begin: name
+      the tool, print the command to run by hand, stop. Installing things
+      automatically can leave someone better off than before, never worse.
+    #>
+    if (Have $cmd) { return }
+
+    Install-Winget $name $id
+    if (Have $cmd) { Ok "$name installed"; return }
+
+    Write-Host "`n$name is not installed, and installing it here did not work." -ForegroundColor Red
+    Write-Host "  $how"
+    Write-Host "  Then open a NEW terminal and run this script again."
+    exit 1
 }
 
 function Probe($block) {
@@ -55,23 +131,42 @@ function Probe($block) {
     finally { $ErrorActionPreference = $previous }
 }
 
+function Find-Python {
+    <#
+      The name of an interpreter that actually runs and is new enough, or null.
+
+      Bare `python` on Windows is frequently the Microsoft Store stub, which
+      prints nothing and opens the Store instead of running, so this proves an
+      interpreter works rather than trusting that the name resolves. The `py`
+      launcher is tried first because it is the one that survives that.
+
+      Being a function rather than a block of script matters now: it is asked
+      twice, once before installing Python and once after, and the second call
+      is the one that has to notice what the first call could not see.
+    #>
+    foreach ($candidate in @("py", "python", "python3")) {
+        if (-not (Have $candidate)) { continue }
+        $version = Probe { & $candidate -c "import sys; print(sys.version_info >= (3, 10))" }
+        if ($version -eq "True") { return $candidate }
+    }
+    return $null
+}
+
 # --- 1. Prerequisites -------------------------------------------------------
 Say "Checking prerequisites"
-Need "node" "Node.js" "winget install OpenJS.NodeJS.LTS -e"
-Need "ollama" "Ollama" "winget install Ollama.Ollama -e"
+Ensure "node" "Node.js" "OpenJS.NodeJS.LTS" "winget install OpenJS.NodeJS.LTS -e"
+Ensure "ollama" "Ollama" "Ollama.Ollama" "winget install Ollama.Ollama -e"
 
-# Find a usable Python. Bare `python` on Windows is frequently the Microsoft
-# Store stub, which prints nothing and opens the Store instead of running - so
-# prove an interpreter works rather than trusting that the name resolves. The
-# `py` launcher is tried first because it is the one that survives that.
-$Python = $null
-foreach ($candidate in @("py", "python", "python3")) {
-    if (-not (Get-Command $candidate -ErrorAction SilentlyContinue)) { continue }
-    $version = Probe { & $candidate -c "import sys; print(sys.version_info >= (3, 10))" }
-    if ($version -eq "True") { $Python = $candidate; break }
+# Python is asked for by capability, not by name, so it cannot go through
+# Ensure: the Store stub means `python` can resolve while no interpreter
+# exists. Install when the search comes back empty, then search again.
+$Python = Find-Python
+if (-not $Python) {
+    Install-Winget "Python" "Python.Python.3.12"
+    $Python = Find-Python
 }
 if (-not $Python) {
-    Write-Host "`nNo working Python 3.10 or newer was found." -ForegroundColor Red
+    Write-Host "`nNo working Python 3.10 or newer was found, and installing one here did not work." -ForegroundColor Red
     Write-Host "  winget install Python.Python.3.12 -e"
     Write-Host "  Then open a NEW terminal and run this script again."
     exit 1
@@ -137,7 +232,8 @@ $check = "import importlib.util as u; " +
 $installed = Probe { & $Venv -c $check }
 
 if ($installed -ne "True") {
-    Ok "Installing Python packages (a few minutes - PyTorch is large)..."
+    Ok "Installing Python packages. This is the slow part: three to ten minutes,"
+    Ok "most of it PyTorch. It has not frozen, and it only happens once."
     & $Venv -m pip install --disable-pip-version-check -q --upgrade pip
     & $Venv -m pip install --disable-pip-version-check -r (Join-Path $Backend "requirements.txt")
     if ($LASTEXITCODE -ne 0) {

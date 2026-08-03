@@ -51,12 +51,21 @@ aimed at the skills the role wants that your experience can't yet prove.
 
 ## Setup
 
-**You need** [Python 3.10+](https://www.python.org/downloads/),
-[Node 20+](https://nodejs.org/) and [Ollama](https://ollama.com/download).
-Missing one? The script below names it and gives you the command to install it.
+**You need nothing set up first.** On Windows and macOS the script installs
+[Python 3.10+](https://www.python.org/downloads/), [Node 20+](https://nodejs.org/)
+and [Ollama](https://ollama.com/download) itself if they are missing, using
+winget or Homebrew. On Linux it names what is missing and gives you the command.
 
 **No database to install, and no Docker.** Everything is stored in one SQLite
 file at `data/jobsearch.db` — see [Why SQLite](#why-sqlite).
+
+First, Git, which is what fetches the code. Safe to run if you already have it:
+
+**Windows** `winget install Git.Git -e` ·
+**macOS** `xcode-select --install` ·
+**Linux** `sudo apt install git -y`
+
+Then:
 
 ```bash
 git clone https://github.com/Maan-Teckwani/unemployed.git
@@ -67,13 +76,18 @@ cd unemployed
 
 **Windows**
 ```bash
-powershell -ExecutionPolicy Bypass -File .\run.ps1
+.\run.cmd
 ```
 
 **macOS / Linux**
 ```bash
 ./run.sh
 ```
+
+`run.cmd` just launches `run.ps1` with the execution-policy flag Windows needs
+for unsigned scripts, so you do not have to type it. Double-clicking it in
+Explorer works too. `powershell -ExecutionPolicy Bypass -File .\run.ps1` still
+works if you prefer it.
 
 That's the whole setup. The script downloads the model, builds the virtual
 environment, installs both dependency trees, creates the database, launches the

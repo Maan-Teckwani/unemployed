@@ -98,39 +98,109 @@ export const copy = {
 
   install: {
     label: "Getting it running",
-    heading: "Two commands.",
+    heading: "Four commands, once.",
     locked: "Add yourself to the wall and the setup steps open up.",
     intro:
-      "About fifteen minutes, and most of that is a download you can walk away from. No database to install and no Docker. You need Python 3.10+, Node 20+ and Ollama, and the script names anything you are missing.",
-    // One path, not a menu. Every extra option here was a way to end up with a
-    // half working install and no idea which half.
-    steps: [
-      {
-        title: "Clone it",
-        command: "git clone https://github.com/Maan-Teckwani/unemployed.git",
-        note: "Then open that folder in a terminal.",
-      },
-      {
-        title: "Run it",
-        note: "The same script sets up and starts everything: it installs what is missing, downloads the model (about 2 GB, once), creates the database and opens the app. Run the exact same command every time after and it skips straight to launching.",
-        os: {
-          windows: {
-            tab: "Windows",
-            command: "powershell -ExecutionPolicy Bypass -File .\\run.ps1",
-            note: "The -ExecutionPolicy flag is not optional. Windows blocks unsigned scripts by default, and without it the script refuses to start.",
+      "About fifteen minutes, and most of that is a download you can walk away from. No database to install and no Docker. You do not need to have anything set up first: the script installs Python, Node and Ollama itself if they are missing.",
+    terminalHint: {
+      windows: "Open the Start menu, type PowerShell, and press Enter. Copy each command below into that window and press Enter after each one. Wait for one to finish before starting the next.",
+      macos: "Press Command and Space, type Terminal, and press Enter. Copy each command below into that window and press Enter after each one. Wait for one to finish before starting the next.",
+      linux: "Open your terminal. Copy each command below into it and press Enter after each one. Wait for one to finish before starting the next.",
+    },
+    osLabel: "Which computer are you on?",
+    // One path per machine, not a menu of options. Every extra choice here was
+    // a way to end up with a half working install and no idea which half.
+    //
+    // Four steps rather than two because the two were wrong: `git clone` leaves
+    // you in the folder above the one it made, so the run command could never
+    // find the script. The missing `cd` was the first thing everybody hit.
+    steps: {
+      windows: {
+        tab: "Windows",
+        list: [
+          {
+            title: "Install Git, which downloads the code",
+            command: "winget install Git.Git -e",
+            note: "Safe to run even if you already have Git. It will say so and change nothing. If it asks for permission, say yes.",
           },
-          unix: {
-            tab: "macOS and Linux",
+          {
+            title: "Download the code",
+            command: "git clone https://github.com/Maan-Teckwani/unemployed.git",
+            note: "This makes a new folder called unemployed wherever you are.",
+          },
+          {
+            title: "Go into the folder you just made",
+            command: "cd unemployed",
+            note: "Every command after this one has to be run from inside that folder.",
+          },
+          {
+            title: "Start it",
+            command: ".\\run.cmd",
+            note: "This is the long one. It installs anything missing, downloads the model (about 2 GB, once), sets up the database and opens the app for you.",
+          },
+        ],
+      },
+      macos: {
+        tab: "Mac",
+        list: [
+          {
+            title: "Install Git, which downloads the code",
+            command: "xcode-select --install",
+            note: "A window pops up: click Install. If it says the tools are already installed, you are done with this step.",
+          },
+          {
+            title: "Download the code",
+            command: "git clone https://github.com/Maan-Teckwani/unemployed.git",
+            note: "This makes a new folder called unemployed wherever you are.",
+          },
+          {
+            title: "Go into the folder you just made",
+            command: "cd unemployed",
+            note: "Every command after this one has to be run from inside that folder.",
+          },
+          {
+            title: "Start it",
             command: "./run.sh",
-            note: "If the terminal says permission denied, run chmod +x run.sh once and try again.",
+            note: "This is the long one. It installs anything missing, downloads the model (about 2 GB, once), sets up the database and opens the app for you. Mac may ask for your login password once, so it can install what is missing.",
           },
-        },
+        ],
       },
-    ],
+      linux: {
+        tab: "Linux",
+        list: [
+          {
+            title: "Install Git, which downloads the code",
+            command: "sudo apt install git -y",
+            note: "Safe to run even if you already have Git. On Fedora or Arch use your own package manager instead.",
+          },
+          {
+            title: "Download the code",
+            command: "git clone https://github.com/Maan-Teckwani/unemployed.git",
+            note: "This makes a new folder called unemployed wherever you are.",
+          },
+          {
+            title: "Go into the folder you just made",
+            command: "cd unemployed",
+            note: "Every command after this one has to be run from inside that folder.",
+          },
+          {
+            title: "Start it",
+            command: "./run.sh",
+            note: "This is the long one. On Linux the script names anything missing rather than installing it, so install what it asks for and run it again.",
+          },
+        ],
+      },
+    },
     outroBefore: "It opens",
-    outroAfter: "for you when it is ready.",
+    outroAfter: "for you when it is ready. The first run takes about fifteen minutes. You can walk away during it.",
     port: "http://localhost:3000",
     portLabel: "localhost:3000",
+    // The most common question the page never answered.
+    againHeading: "Starting it again another day",
+    againBody:
+      "You only do the four steps above once. After that, open a terminal and run these two:",
+    againNote:
+      "It skips everything it has already done and goes straight to opening the app.",
     guideBefore: "First time? Read",
     guideLink: "how to actually use this",
     guideAfter: "before you start. Fifteen minutes of setup decides how good everything after it is.",

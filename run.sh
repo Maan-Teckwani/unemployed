@@ -20,9 +20,55 @@ say() { printf "\n==> %s\n" "$1"; }
 ok() { printf "    %s\n" "$1"; }
 die() { printf "\n%s\n" "$1" >&2; exit 1; }
 
+have() { command -v "$1" >/dev/null 2>&1; }
+
 need() {
-  command -v "$1" >/dev/null 2>&1 || die "$2 is not installed.
+  have "$1" || die "$2 is not installed.
   $3
+  Then open a new terminal and run this script again."
+}
+
+# Put Homebrew on the PATH, installing it first if it is not here at all.
+#
+# Apple Silicon puts brew in /opt/homebrew and Intel in /usr/local, and neither
+# is on the PATH of a shell that has never seen it, so `shellenv` does that part
+# rather than us guessing.
+#
+# The installer needs sudo, which means macOS asks for the login password. That
+# is the operating system asking, not this script, and it cannot be suppressed.
+# Saying so first is the difference between an expected prompt and an alarming
+# one. NONINTERACTIVE stops brew adding a second prompt of its own on top.
+setup_brew() {
+  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$candidate" ] && eval "$("$candidate" shellenv)" && return 0
+  done
+  have brew && return 0
+
+  say "Installing Homebrew"
+  ok "macOS will ask for your login password. That is macOS, not this script."
+  NONINTERACTIVE=1 /bin/bash -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+
+  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$candidate" ] && eval "$("$candidate" shellenv)" && return 0
+  done
+  have brew
+}
+
+# Install $2 with Homebrew if $1 is missing, then fall back to the old message.
+#
+# Success is "the command resolves now", never brew's exit code, for the same
+# reason as on Windows: brew reports failure for benign outcomes such as the
+# formula already being installed.
+ensure() {
+  have "$1" && return 0
+  if setup_brew; then
+    say "Installing $3"
+    brew install "$2" || true
+    have "$1" && { ok "$3 installed"; return 0; }
+  fi
+  die "$3 is not installed, and installing it here did not work.
+  $4
   Then open a new terminal and run this script again."
 }
 
@@ -31,14 +77,23 @@ say "Checking prerequisites"
 if [ "$(uname)" = "Darwin" ]; then
   HINT_NODE="brew install node"; HINT_PY="brew install python@3.12"
   HINT_OLLAMA="brew install ollama"
+
+  # The formula, not the cask. It gives a plain CLI with no .app to launch,
+  # which is what the `ollama serve` handling below already expects.
+  ensure node node "Node.js" "$HINT_NODE"
+  ensure python3 python@3.12 "Python" "$HINT_PY"
+  ensure ollama ollama "Ollama" "$HINT_OLLAMA"
 else
+  # Linux keeps naming what is missing rather than installing it. The install
+  # routes here vary by distribution and every one of them wants sudo, which is
+  # a much bigger thing to do unasked than a per user Homebrew.
   HINT_NODE="sudo apt install nodejs npm"; HINT_PY="sudo apt install python3 python3-venv"
   HINT_OLLAMA="curl -fsSL https://ollama.com/install.sh | sh"
-fi
 
-need node "Node.js" "$HINT_NODE"
-need python3 "Python" "$HINT_PY"
-need ollama "Ollama" "$HINT_OLLAMA"
+  need node "Node.js" "$HINT_NODE"
+  need python3 "Python" "$HINT_PY"
+  need ollama "Ollama" "$HINT_OLLAMA"
+fi
 
 # Only a floor, not a ceiling: requirements.txt uses minimum bounds so pip
 # resolves whatever has wheels for this interpreter.
@@ -77,7 +132,8 @@ say "Preparing the backend"
 # on every run, to answer a question about file layout.
 CHECK='import importlib.util as u; import sys; sys.exit(0 if all(u.find_spec(m) for m in ("fastapi","sentence_transformers","alembic")) else 1)'
 if ! "$VENV" -c "$CHECK" >/dev/null 2>&1; then
-  ok "Installing Python packages (a few minutes - PyTorch is large)..."
+  ok "Installing Python packages. This is the slow part: three to ten minutes,"
+  ok "most of it PyTorch. It has not frozen, and it only happens once."
   "$VENV" -m pip install --disable-pip-version-check -q --upgrade pip
   "$VENV" -m pip install --disable-pip-version-check -r "$BACKEND/requirements.txt"
 fi

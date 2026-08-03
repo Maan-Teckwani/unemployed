@@ -35,14 +35,23 @@ export function InstallSection() {
             </p>
           </div>
 
-          <div className="md:col-span-7 md:col-start-6">{joined ? <Steps /> : <Locked />}</div>
+          {/* min-w-0 because a grid item defaults to min-width:auto and so
+              will not shrink below its own content. The commands inside are
+              whitespace-pre, so without this the longest one sets the width of
+              this column, and on a phone that drags the entire page sideways
+              rather than scrolling inside its own box. */}
+          <div className="min-w-0 md:col-span-7 md:col-start-6">
+            {joined ? <Steps /> : <Locked />}
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-type Os = "windows" | "unix";
+type Os = "windows" | "macos" | "linux";
+
+const PLATFORMS = ["windows", "macos", "linux"] as const;
 
 /**
  * The visitor's platform, read the sanctioned way rather than assigned inside
@@ -51,49 +60,69 @@ type Os = "windows" | "unix";
  * never changes.
  */
 const NEVER_CHANGES = () => () => {};
-const platformNow = (): Os => (navigator.userAgent.includes("Win") ? "windows" : "unix");
+const platformNow = (): Os => {
+  const agent = navigator.userAgent;
+  if (agent.includes("Win")) return "windows";
+  if (agent.includes("Mac")) return "macos";
+  return "linux";
+};
 const platformOnServer = (): Os => "windows";
 
+/**
+ * The setup, as four commands for one machine.
+ *
+ * The switch sits above the list rather than inside a step, because the Git
+ * command and the run command both differ by platform. Choosing once and having
+ * every command below follow is the difference between reading a page and
+ * assembling one. Mac and Linux used to share a tab, which was fine when only
+ * the last command differed and misleading the moment the first one did too.
+ */
 function Steps() {
   const detected = useSyncExternalStore(NEVER_CHANGES, platformNow, platformOnServer);
   // Guessing beats making someone choose, and guessing wrong costs one click.
   const [chosenOs, setChosenOs] = useState<Os | null>(null);
   const os = chosenOs ?? detected;
-  const setOs = setChosenOs;
 
-  const [clone, run] = copy.install.steps;
-  const chosen = run.os[os];
+  const { list } = copy.install.steps[os];
+  // Coming back another day is the tail of the setup, not a different script:
+  // go into the folder, start it. Taken from the same list so the commands
+  // cannot drift apart from the ones above.
+  const again = list.slice(-2);
 
   return (
     <div>
-      <ol className="space-y-8">
-        <Step index={0} title={clone.title}>
-          <CopyButton command={clone.command} />
-          <p className="text-muted-foreground text-xs">{clone.note}</p>
-        </Step>
+      <p className="text-sm font-medium">{copy.install.osLabel}</p>
+      <div className="mt-3 flex gap-1 rounded-lg border p-1">
+        {PLATFORMS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setChosenOs(key)}
+            aria-pressed={os === key}
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              os === key
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {copy.install.steps[key].tab}
+          </button>
+        ))}
+      </div>
 
-        <Step index={1} title={run.title}>
-          <div className="flex gap-1 rounded-lg border p-1">
-            {(["windows", "unix"] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setOs(key)}
-                aria-pressed={os === key}
-                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  os === key
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {run.os[key].tab}
-              </button>
-            ))}
-          </div>
-          <CopyButton command={chosen.command} />
-          <p className="text-muted-foreground text-xs">{chosen.note}</p>
-          <p className="text-muted-foreground text-xs">{run.note}</p>
-        </Step>
+      {/* Where the terminal is and what to do with it. Everything below assumes
+          a window that a lot of people have never opened. */}
+      <p className="text-muted-foreground mt-4 text-sm leading-relaxed">
+        {copy.install.terminalHint[os]}
+      </p>
+
+      <ol className="mt-8 space-y-8">
+        {list.map((step, i) => (
+          <Step key={step.title} index={i} title={step.title}>
+            <CopyButton command={step.command} />
+            <p className="text-muted-foreground text-xs">{step.note}</p>
+          </Step>
+        ))}
       </ol>
 
       <p className="mt-9 text-sm">
@@ -104,7 +133,20 @@ function Steps() {
         {copy.install.outroAfter}
       </p>
 
-      <p className="text-muted-foreground mt-4 text-sm">
+      <div className="mt-10 border-t pt-8">
+        <h4 className="text-sm font-medium">{copy.install.againHeading}</h4>
+        <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+          {copy.install.againBody}
+        </p>
+        <div className="mt-4 space-y-2">
+          {again.map((step) => (
+            <CopyButton key={step.command} command={step.command} />
+          ))}
+        </div>
+        <p className="text-muted-foreground mt-3 text-xs">{copy.install.againNote}</p>
+      </div>
+
+      <p className="text-muted-foreground mt-8 text-sm">
         {copy.install.guideBefore}{" "}
         <Link href="/guide" className="hover:text-foreground underline underline-offset-4">
           {copy.install.guideLink}
@@ -141,9 +183,9 @@ function Locked() {
   return (
     <div className="card flex flex-col items-start gap-5">
       <div className="space-y-3">
-        {/* Two blurred bars standing in for the commands, so it is obvious
-            what is behind this rather than being a mystery. */}
-        {[80, 64].map((width, i) => (
+        {/* Blurred bars standing in for the commands, one per real step, so it
+            is obvious what is behind this rather than being a mystery. */}
+        {[86, 72, 44, 60].map((width, i) => (
           <div key={i} className="flex items-center gap-3">
             <span className="text-muted-foreground/40 font-mono text-xs tabular-nums">
               {String(i + 1).padStart(2, "0")}

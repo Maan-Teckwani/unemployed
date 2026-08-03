@@ -18,7 +18,11 @@ export function CopyButton({ command }: { command: string }) {
 
   return (
     <div className="flex items-stretch gap-2">
-      <code className="flex-1 overflow-x-auto rounded-md border px-3 py-2 font-mono text-xs whitespace-pre">
+      {/* min-w-0 is what makes overflow-x-auto above it mean anything. A flex
+          item defaults to min-width:auto, so it refuses to shrink below its
+          content and a long command drags the whole page sideways on a phone
+          instead of scrolling inside its own box. */}
+      <code className="min-w-0 flex-1 overflow-x-auto rounded-md border px-3 py-2 font-mono text-xs whitespace-pre">
         {command}
       </code>
       <button
