@@ -86,6 +86,22 @@ no `.env` file to write.
 
 Open **http://localhost:3000**.
 
+If Ollama is installed but not reachable, `./run.sh` now auto-attempts a
+recovery on macOS/Linux before failing:
+- checks who is listening on `11434` and writes diagnostics to
+  `/tmp/ollama-port-11434.txt`
+- clears stale `ollama serve` processes
+- retries startup and prints the last `/tmp/ollama-serve.log` lines if it still
+  fails
+
+On macOS, if you still see a bind error on `127.0.0.1:11434`, run:
+```bash
+brew services restart ollama
+open -a Ollama
+curl http://localhost:11434/api/version
+```
+Then run `./run.sh` again.
+
 <details>
 <summary>Running it by hand instead</summary>
 
