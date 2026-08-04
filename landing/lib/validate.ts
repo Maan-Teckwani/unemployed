@@ -8,7 +8,7 @@
 // extensionless paths the way a bundler does, so without these the test suite
 // cannot import this module at all. tsconfig already sets
 // allowImportingTsExtensions, and the bundler is happy either way.
-import { COUNTRY_CODES } from "./countries.ts";
+import { canonicalCountry, COUNTRY_CODES } from "./countries.ts";
 import { GENDERS, type Gender } from "./gender-options.ts";
 
 export const MAX_NAME_LENGTH = 24;
@@ -76,7 +76,18 @@ export function checkName(raw: unknown): { name: string; problem: NameProblem } 
 }
 
 export function isValidCountry(code: unknown): code is string {
-  return typeof code === "string" && COUNTRY_CODES.has(code.toUpperCase());
+  return typeof code === "string" && COUNTRY_CODES.has(canonicalCountry(code));
+}
+
+/**
+ * The code to store, given whatever arrived.
+ *
+ * Folds the retired duplicates onto the code that replaced them, so the wall
+ * never ends up with two groups of Germans. Returns null rather than a fallback
+ * country, because guessing where someone is from is worse than asking again.
+ */
+export function normalizeCountry(code: unknown): string | null {
+  return isValidCountry(code) ? canonicalCountry(code) : null;
 }
 
 export function asGenderStrict(value: unknown): Gender | null {

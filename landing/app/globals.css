@@ -48,6 +48,11 @@
 }
 
 :root {
+  /* Tells the browser which way to paint the parts of a control we do not draw
+     ourselves: the popup list a native select opens, scrollbars, autofill.
+     Without it the popup is painted light whatever the page is doing, so in
+     dark mode the country list was white text on a white panel. */
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -83,6 +88,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -129,6 +135,35 @@
     font-size: 17px;
     scroll-behavior: smooth;
   }
+  /* Lenis animates the scroll offset itself, so the browser doing the same
+     thing at the same time is two easings fighting over one number. The class
+     is added only while Lenis is actually running, which means anyone it skips,
+     including everyone who asked for reduced motion, keeps the native smooth
+     scroll they had before. */
+  html.lenis-on {
+    scroll-behavior: auto;
+  }
+}
+
+/* The rules Lenis ships in its own stylesheet, written out rather than imported
+   so the whole page stays one file to read.
+
+   Deliberately outside @layer base. The height rule has to beat Tailwind's
+   h-full on <html>, and a layered rule loses to any utility no matter how
+   specific it is, so inside the layer this silently did nothing. Unlayered CSS
+   outranks every layer, which is the only reason this works.
+
+   The height itself is load bearing: with <html> pinned to 100%, Lenis measures
+   a page exactly one viewport tall and will not scroll past the first screen. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
 }
 /* ---------------------------------------------------------------------------
    The wordmark: un̶employed
@@ -216,21 +251,11 @@
    JavaScript off, and it stops entirely under prefers-reduced-motion.
    --------------------------------------------------------------------------- */
 
-/* Blocks are visible by default. The observer marks them armed, which is what
-   hides them, so nothing disappears when the script never runs. */
-.reveal[data-armed="true"] {
-  opacity: 0;
-  transform: translateY(18px);
-}
-.reveal {
-  transition:
-    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.reveal[data-shown="true"] {
-  opacity: 1;
-  transform: none;
-}
+/* The reveal used to be an IntersectionObserver toggling data-armed and
+   data-shown against the rules that stood here. components/reveal.tsx does it
+   with framer-motion now, and these selectors matched nothing, including the
+   reduced-motion override that was supposed to switch them off. The override
+   lives in components/motion-provider.tsx instead, where framer can see it. */
 
 /* The crowd behind the headline. One continuous grid you drag sideways, rather
    than a screenful of faces scattered by hash: a scatter reads as a crowd at
@@ -353,6 +378,21 @@
   transition:
     opacity 0.25s ease,
     transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Safari draws its own disclosure triangle and ignores list-style, so the FAQ
+   summaries need this as well as the utility class to show only our own mark. */
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The faces are line drawings in near black ink with a transparent ground, so
+   on a dark page they would be black on black. They keep their light disc and
+   sit a little quieter instead, since a grid of white circles glares in a way
+   the same grid of grey ones does not. */
+.dark .hero-board__face img {
+  background: oklch(0.985 0 0);
+  opacity: 0.42;
 }
 
 .hero-board__face:hover {
@@ -558,6 +598,17 @@
   font-size: 0.875rem;
 }
 
+/* A select needs a real background, unlike the text inputs that share this
+   class. The list it opens is painted by the browser from the element's own
+   computed background, and a transparent one resolves to white, which in dark
+   mode meant white options on a white panel. The options are named separately
+   because they are painted as their own elements, not as part of the select. */
+select.input,
+select.input option {
+  background: var(--background);
+  color: var(--foreground);
+}
+
 textarea.input {
   height: auto;
   padding-block: 0.5rem;
@@ -608,12 +659,6 @@ textarea.input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .reveal[data-armed="true"] {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
   .hero-board__face {
     opacity: 1;
     animation: none;

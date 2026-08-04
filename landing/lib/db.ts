@@ -253,7 +253,7 @@ export async function updateExperience(
       returning experience_id
     )
     select id from updated
-  `) as any[];
+  `) as { id: string }[];
   return resultRows.length > 0;
 }
 
@@ -263,7 +263,7 @@ export async function deleteExperience(id: string, signupId: string): Promise<bo
     delete from experiences
     where id = ${id}::bigint and signup_id = ${signupId}::bigint
     returning id
-  `) as any[];
+  `) as { id: string }[];
   return rows.length > 0;
 }
 

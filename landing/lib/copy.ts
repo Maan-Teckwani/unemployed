@@ -12,18 +12,44 @@
 export const copy = {
   meta: {
     title: "unemployed",
+    // The wordmark alone is the tab title, but it says nothing on its own in a
+    // link preview or a search result, so cards get the line underneath it.
+    tagline: "unemployed: a free job hunting tool that runs on your laptop",
     description:
       "A free job hunting tool that runs on your own laptop. Finds roles, shows you why they fit, and writes a resume from things you actually did.",
+    pages: {
+      home: "Job hunting is a full time job. Nobody pays you for it.",
+      wall: "The wall",
+      wallDescription:
+        "Everyone using this to look for work right now. A name, a country and a face each, and nothing else.",
+      experiences: "Placement snippets",
+      experiencesDescription:
+        "What the interview rounds were actually like, written by people who sat them. Filter by company.",
+      join: "Join the wall",
+      joinDescription:
+        "Pick a name and a face, and the setup steps open up. No password, and your email is never shown.",
+    },
   },
 
   nav: {
     links: [
       { href: "/#what", label: "What it does" },
+      // Setup is the section people come back for, and it used to be reachable
+      // only by scrolling the whole page or by finishing the join form.
+      { href: "/#install", label: "Setup" },
       { href: "/guide", label: "How to use it" },
       { href: "/wall", label: "The wall" },
       { href: "/experiences", label: "Placement snippets" },
     ],
     cta: "Join the wall",
+    theme: {
+      toDark: "Switch to dark theme",
+      toLight: "Switch to light theme",
+    },
+    menu: {
+      open: "Open menu",
+      close: "Close menu",
+    },
   },
 
   hero: {
@@ -228,6 +254,62 @@ export const copy = {
     ],
   },
 
+  /**
+   * The questions people actually ask, answered in the same voice as the rest of
+   * the page: plainly, including the parts that are not flattering.
+   *
+   * Rendered as native details elements, so every answer is in the page whether
+   * or not it has been opened. That is what makes them worth having here rather
+   * than in a modal: a search engine reads them, and so does anyone who lands on
+   * the page with scripting off.
+   */
+  faq: {
+    label: "Questions",
+    heading: "The things people ask before they install it.",
+    items: [
+      {
+        q: "Is it actually free, or free until it is not?",
+        a: "Free, and there is nothing to charge for. It runs on your laptop, so there is no server to pay for and no usage to meter. There is no account, no plan, and no card. The code is public and you can read exactly what it does.",
+      },
+      {
+        q: "Where does my resume go?",
+        a: "Nowhere. Your career history is one file on your own disk, and the model that reads it runs on your machine through Ollama. The only requests the app makes are to public job boards, which is the same thing that happens when you open a careers page yourself.",
+      },
+      {
+        q: "Do I need to know how to code?",
+        a: "You need to be willing to copy four commands into a terminal once. The page walks you through opening one. After that it is an ordinary website in your browser. If that first part sounds like too much, this is honestly not ready for you yet.",
+      },
+      {
+        q: "What does it need to run?",
+        a: "A laptop with a few GB free. The setup script installs Python, Node and Ollama itself if they are missing, then downloads a model that is about 2 GB, once. There is no database to install and no Docker.",
+      },
+      {
+        q: "How long does the first run take?",
+        a: "About fifteen minutes, and nearly all of it is a download you can walk away from. Starting it again on another day takes two commands and a few seconds.",
+      },
+      {
+        q: "Does it apply to jobs for me?",
+        a: "No, and that is deliberate. It finds the roles, scores them, and writes the resume. You read it, you decide, and you press send on the company's own page. Nothing is submitted anywhere on your behalf.",
+      },
+      {
+        q: "Will it invent things to make me look better?",
+        a: "It is built so that it cannot. Every bullet has to cite the accomplishment it came from, and any number in a bullet has to already appear in that accomplishment. A line that fails either check is dropped rather than shipped.",
+      },
+      {
+        q: "Which countries does it cover?",
+        a: "It reads public job boards, so coverage follows the companies that use them. You set your region first, and that decides which roles are stored at all. India, the US, the UK, Europe, Canada, Australia and Singapore each have their own list, and there is an option for no location filter.",
+      },
+      {
+        q: "Can it use my own resume template?",
+        a: "Yes. If you keep your resume in Overleaf, you can hand it your LaTeX and it rewrites your own document rather than handing you someone else's layout. There is also a plain PDF built for machine readers if you do not have a template you care about.",
+      },
+      {
+        q: "Do I need to be on the wall to use it?",
+        a: "No. The wall is a headcount of people doing the same thing, and joining it opens the setup steps on this page. The tool itself does not know or care whether you joined.",
+      },
+    ],
+  },
+
   guide: {
     label: "How to use it",
     heading: "Half an hour once, ten minutes a day.",
@@ -389,9 +471,13 @@ export const copy = {
       male: "Male",
       neutral: "Rather not say",
     },
-    reroll: "Try another face",
+    faceLabel: "Pick a face",
+    faceHint: "Any of these. You can change it later from your profile.",
+    faceOption: (n: number) => `Face ${n}`,
+    moreFaces: "Show more faces",
     submit: "Join the wall",
     submitting: "Adding you",
+    saved: "Profile updated.",
     joined: "You are on the wall",
     joinedBody: "Look up, you are in the crowd behind the headline. The setup steps are open now.",
     errors: {

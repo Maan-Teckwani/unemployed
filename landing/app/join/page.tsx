@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { PageNav } from "@/components/page-nav";
@@ -7,6 +8,12 @@ import { copy } from "@/lib/copy";
 import { viewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: copy.meta.pages.join,
+  description: copy.meta.pages.joinDescription,
+  alternates: { canonical: "/join" },
+};
 
 /**
  * The one page that turns a visitor into someone on the wall.

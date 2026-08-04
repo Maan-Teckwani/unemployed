@@ -21,6 +21,8 @@ No ML, no LLM — just inspectable lists.
 """
 import re
 
+from app.ingestion.cities import terms_for_region
+
 DEFAULT_REGION = "india"
 
 
@@ -28,34 +30,23 @@ def _compile(*patterns: str) -> list[re.Pattern[str]]:
     return [re.compile(p, re.IGNORECASE) for p in patterns]
 
 
-# Each region: substrings that identify it, plus regexes for forms that need
-# word boundaries (country codes, "City, ST").
+# Each region: a label, and the regexes for forms that need word boundaries
+# (country codes, "City, ST").
+#
+# The `terms` are not written here. They are built from app/ingestion/cities.py,
+# which holds every place name in the app along with the other spellings each one
+# goes by. This list and the settings dropdown used to be separate, and the way
+# that failed was quiet: a city you could pick but that ingestion had never heard
+# of looks like it works and ranks nothing.
 REGIONS: dict[str, dict] = {
     "india": {
         "label": "India",
-        "terms": (
-            "india", "bengaluru", "bangalore", "mumbai", "delhi", "gurgaon",
-            "gurugram", "noida", "hyderabad", "pune", "chennai", "kolkata",
-            "ahmedabad", "jaipur", "indore", "kochi", "coimbatore", "chandigarh",
-            "trivandrum", "thiruvananthapuram", "mysore", "mysuru", "nagpur",
-            "vadodara", "surat", "bhubaneswar", "visakhapatnam",
-        ),
         # "IND" as a whole word ("Bangalore, IND"). Not "IN" — that collides
         # with the English word "in", and with Indiana.
         "patterns": _compile(r"\bind\b"),
     },
     "us": {
         "label": "United States",
-        "terms": (
-            "united states", "usa", "u.s.", "north america", "americas",
-            "san francisco", "new york", "seattle", "foster city", "palo alto",
-            "mountain view", "menlo park", "santa clara", "sunnyvale", "san jose",
-            "los angeles", "san diego", "austin", "boston", "chicago", "denver",
-            "boulder", "atlanta", "dallas", "houston", "miami", "philadelphia",
-            "phoenix", "portland", "salt lake city", "nashville", "charlotte",
-            "raleigh", "pittsburgh", "detroit", "minneapolis", "ann arbor",
-            "redmond", "bellevue", "washington", "california", "texas",
-        ),
         "patterns": _compile(
             r"\bu\.?s\.?a?\b",
             # "City, ST" is how boards write US locations. Requiring the comma
@@ -66,51 +57,20 @@ REGIONS: dict[str, dict] = {
     },
     "uk": {
         "label": "United Kingdom",
-        "terms": (
-            "united kingdom", "england", "scotland", "wales", "london",
-            "manchester", "birmingham", "edinburgh", "glasgow", "bristol",
-            "leeds", "cambridge", "oxford", "belfast",
-        ),
         "patterns": _compile(r"\bu\.?k\.?\b"),
     },
     "eu": {
         "label": "Europe",
-        "terms": (
-            "europe", "emea", "germany", "berlin", "munich", "hamburg",
-            "france", "paris", "netherlands", "amsterdam", "spain", "madrid",
-            "barcelona", "italy", "milan", "rome", "poland", "warsaw", "krakow",
-            "ireland", "dublin", "sweden", "stockholm", "norway", "oslo",
-            "denmark", "copenhagen", "finland", "helsinki", "switzerland",
-            "zurich", "austria", "vienna", "belgium", "brussels", "portugal",
-            "lisbon", "czech", "prague", "romania", "bucharest", "hungary",
-            "budapest", "nordics", "greece", "athens",
-        ),
         "patterns": _compile(r"\beu\b"),
     },
-    "canada": {
-        "label": "Canada",
-        "terms": ("canada", "toronto", "vancouver", "montreal", "ottawa", "calgary", "waterloo"),
-        "patterns": [],
-    },
-    "australia": {
-        "label": "Australia / NZ",
-        "terms": (
-            "australia", "sydney", "melbourne", "brisbane", "perth", "canberra",
-            "new zealand", "auckland", "wellington",
-        ),
-        "patterns": [],
-    },
-    "singapore": {
-        "label": "Singapore",
-        "terms": ("singapore",),
-        "patterns": [],
-    },
-    "global": {
-        "label": "Anywhere (no location filter)",
-        "terms": (),
-        "patterns": [],
-    },
+    "canada": {"label": "Canada", "patterns": []},
+    "australia": {"label": "Australia / NZ", "patterns": []},
+    "singapore": {"label": "Singapore", "patterns": []},
+    "global": {"label": "Anywhere (no location filter)", "patterns": []},
 }
+
+for _region, _profile in REGIONS.items():
+    _profile["terms"] = terms_for_region(_region)
 
 REGION_IDS = tuple(REGIONS)
 

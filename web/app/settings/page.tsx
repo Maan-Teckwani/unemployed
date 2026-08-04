@@ -11,6 +11,7 @@ import {
   type Preferences,
 } from "@/lib/api";
 import { CompanyManager } from "@/components/settings/company-manager";
+import { LocationPicker } from "@/components/settings/location-picker";
 import {
   Select,
   SelectContent,
@@ -231,21 +232,16 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             A <em>soft</em> preference — these rank higher but nothing is filtered
             out, because a great role in another city is still worth seeing.
-            Comma separated.
+            Picking from the list matters: boards write &ldquo;Bengaluru&rdquo;
+            where you might type &ldquo;Bangalore&rdquo;, and only a known city
+            matches both.
           </p>
-          <Input
-            id="locations"
-            value={prefs.preferred_locations.join(", ")}
-            onChange={(e) =>
-              setPrefs((p) => ({
-                ...p,
-                preferred_locations: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              }))
+          <LocationPicker
+            region={prefs.region}
+            value={prefs.preferred_locations}
+            onChange={(next) =>
+              setPrefs((p) => ({ ...p, preferred_locations: next }))
             }
-            placeholder="Bengaluru, Hyderabad, Pune"
           />
           <div className="pt-1">
             <Toggle

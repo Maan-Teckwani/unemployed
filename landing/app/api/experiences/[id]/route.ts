@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { db, deleteExperience, signupForGoogleSub, updateExperience } from "@/lib/db";
+import { deleteExperience, signupForGoogleSub, updateExperience } from "@/lib/db";
 import {
   checkCompany,
   checkRole,

@@ -24,6 +24,7 @@ import re
 import numpy as np
 
 from app.ai.embeddings import embed_query
+from app.ingestion.cities import resolve as resolve_city
 from app.ingestion.experience import required_years
 from app.ingestion.role_family import DEFAULT_FAMILIES, classify
 from app.ingestion.seniority import is_fresher_friendly
@@ -254,6 +255,40 @@ def _hard_filter(
     return False, ""
 
 
+def location_terms(preferred: list[str] | None) -> list[str]:
+    """Every spelling of every place the candidate asked for, lowercase.
+
+    A preference of "Bangalore" has to match a posting that says "Bengaluru".
+    They are the same city and the board picked the spelling, not the candidate,
+    so resolving through the alias list is the difference between a preference
+    that works and one that silently ranks nothing.
+
+    Anything the list has never heard of is kept as typed rather than dropped:
+    someone in a city we do not carry should still get their own preference.
+    """
+    terms: list[str] = []
+    for raw in preferred or []:
+        text = " ".join(str(raw).lower().split())
+        if not text:
+            continue
+        city = resolve_city(text)
+        terms.extend(city.terms if city else [text])
+    return terms
+
+
+def _names_place(location: str, terms: list[str]) -> bool:
+    """Whether the location text names one of these places, as a whole word.
+
+    Whole words, not substrings. A plain `in` test read "NY" out of "Kenya" and
+    "Sydney, NSW", so a preference could be satisfied by a city on the other side
+    of the world that happened to share four letters.
+    """
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", location)
+        for term in terms
+    )
+
+
 def preference_fit(job, preferences=None) -> float:
     """How well this job matches where the candidate actually wants to work.
 
@@ -262,7 +297,7 @@ def preference_fit(job, preferences=None) -> float:
     Neutral (0.5) when no preference is expressed, so this feature never
     penalises someone who has not filled the settings in.
     """
-    wanted = [p.lower().strip() for p in (getattr(preferences, "preferred_locations", None) or []) if p.strip()]
+    wanted = location_terms(getattr(preferences, "preferred_locations", None))
     remote_ok = getattr(preferences, "remote_ok", True)
     location = (job.location or "").lower()
 
@@ -270,7 +305,7 @@ def preference_fit(job, preferences=None) -> float:
         return 1.0 if remote_ok else 0.3
     if not wanted:
         return 0.5  # no stated preference — stay neutral
-    if any(city in location for city in wanted):
+    if _names_place(location, wanted):
         return 1.0
     return 0.4  # in scope (it passed the India filter) but not a preferred city
 

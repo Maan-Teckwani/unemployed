@@ -19,6 +19,14 @@
  *
  * Rendered as a name, never as a flag emoji: flags are full colour and the page
  * is black and white apart from the avatars.
+ *
+ * One code per country, which took a second pass to get right. CLDR also carries
+ * codes for states that no longer exist, and it labels them with the name of
+ * whatever succeeded them, so the list arrived with "Germany" in it twice: once
+ * as DE and once as DD, East Germany. Two readers picking the same word off the
+ * same dropdown were being stored as different countries and never grouped
+ * together. The deprecated halves are gone, and DEPRECATED_COUNTRIES below folds
+ * away any that were already written to the wall.
  */
 export type Country = { code: string; name: string };
 
@@ -47,7 +55,6 @@ export const COUNTRIES: readonly Country[] = [
   { code: "BE", name: "Belgium" },
   { code: "BZ", name: "Belize" },
   { code: "BJ", name: "Benin" },
-  { code: "DY", name: "Benin" },
   { code: "BM", name: "Bermuda" },
   { code: "BT", name: "Bhutan" },
   { code: "BO", name: "Bolivia" },
@@ -59,7 +66,6 @@ export const COUNTRIES: readonly Country[] = [
   { code: "BN", name: "Brunei" },
   { code: "BG", name: "Bulgaria" },
   { code: "BF", name: "Burkina Faso" },
-  { code: "HV", name: "Burkina Faso" },
   { code: "BI", name: "Burundi" },
   { code: "KH", name: "Cambodia" },
   { code: "CM", name: "Cameroon" },
@@ -77,13 +83,11 @@ export const COUNTRIES: readonly Country[] = [
   { code: "KM", name: "Comoros" },
   { code: "CG", name: "Congo - Brazzaville" },
   { code: "CD", name: "Congo - Kinshasa" },
-  { code: "ZR", name: "Congo - Kinshasa" },
   { code: "CK", name: "Cook Islands" },
   { code: "CR", name: "Costa Rica" },
   { code: "CI", name: "Côte d’Ivoire" },
   { code: "HR", name: "Croatia" },
   { code: "CU", name: "Cuba" },
-  { code: "AN", name: "Curaçao" },
   { code: "CW", name: "Curaçao" },
   { code: "CY", name: "Cyprus" },
   { code: "CZ", name: "Czechia" },
@@ -104,13 +108,11 @@ export const COUNTRIES: readonly Country[] = [
   { code: "FJ", name: "Fiji" },
   { code: "FI", name: "Finland" },
   { code: "FR", name: "France" },
-  { code: "FX", name: "France" },
   { code: "GF", name: "French Guiana" },
   { code: "PF", name: "French Polynesia" },
   { code: "GA", name: "Gabon" },
   { code: "GM", name: "Gambia" },
   { code: "GE", name: "Georgia" },
-  { code: "DD", name: "Germany" },
   { code: "DE", name: "Germany" },
   { code: "GH", name: "Ghana" },
   { code: "GI", name: "Gibraltar" },
@@ -176,7 +178,6 @@ export const COUNTRIES: readonly Country[] = [
   { code: "MS", name: "Montserrat" },
   { code: "MA", name: "Morocco" },
   { code: "MZ", name: "Mozambique" },
-  { code: "BU", name: "Myanmar (Burma)" },
   { code: "MM", name: "Myanmar (Burma)" },
   { code: "NA", name: "Namibia" },
   { code: "NR", name: "Nauru" },
@@ -210,16 +211,13 @@ export const COUNTRIES: readonly Country[] = [
   { code: "RE", name: "Réunion" },
   { code: "RO", name: "Romania" },
   { code: "RU", name: "Russia" },
-  { code: "SU", name: "Russia" },
   { code: "RW", name: "Rwanda" },
   { code: "WS", name: "Samoa" },
   { code: "SM", name: "San Marino" },
   { code: "ST", name: "São Tomé and Príncipe" },
   { code: "SA", name: "Saudi Arabia" },
   { code: "SN", name: "Senegal" },
-  { code: "CS", name: "Serbia" },
   { code: "RS", name: "Serbia" },
-  { code: "YU", name: "Serbia" },
   { code: "SC", name: "Seychelles" },
   { code: "SL", name: "Sierra Leone" },
   { code: "SG", name: "Singapore" },
@@ -250,7 +248,6 @@ export const COUNTRIES: readonly Country[] = [
   { code: "TZ", name: "Tanzania" },
   { code: "TH", name: "Thailand" },
   { code: "TL", name: "Timor-Leste" },
-  { code: "TP", name: "Timor-Leste" },
   { code: "TG", name: "Togo" },
   { code: "TK", name: "Tokelau" },
   { code: "TO", name: "Tonga" },
@@ -265,27 +262,44 @@ export const COUNTRIES: readonly Country[] = [
   { code: "UA", name: "Ukraine" },
   { code: "AE", name: "United Arab Emirates" },
   { code: "GB", name: "United Kingdom" },
-  { code: "UK", name: "United Kingdom" },
   { code: "US", name: "United States" },
   { code: "UY", name: "Uruguay" },
   { code: "UZ", name: "Uzbekistan" },
-  { code: "NH", name: "Vanuatu" },
   { code: "VU", name: "Vanuatu" },
   { code: "VA", name: "Vatican City" },
   { code: "VE", name: "Venezuela" },
-  { code: "VD", name: "Vietnam" },
   { code: "VN", name: "Vietnam" },
   { code: "WF", name: "Wallis and Futuna" },
   { code: "EH", name: "Western Sahara" },
-  { code: "YD", name: "Yemen" },
   { code: "YE", name: "Yemen" },
   { code: "ZM", name: "Zambia" },
-  { code: "RH", name: "Zimbabwe" },
   { code: "ZW", name: "Zimbabwe" },
 ];
 
 export const COUNTRY_CODES = new Set(COUNTRIES.map((c) => c.code));
 
+/**
+ * Codes the dropdown used to offer, and what each one means now.
+ *
+ * These are dead states and old spellings: DD is East Germany, SU the Soviet
+ * Union, YU Yugoslavia, UK the reserved alias for GB. Nobody meant to pick one,
+ * they were simply the other entry with the same name on it. Rows written while
+ * they were on offer are read as the country that replaced them, so the wall
+ * groups correctly and a saved profile does not fail validation.
+ */
+export const DEPRECATED_COUNTRIES: Readonly<Record<string, string>> = {
+  DY: "BJ", HV: "BF", ZR: "CD", AN: "CW", FX: "FR", DD: "DE",
+  BU: "MM", SU: "RU", CS: "RS", YU: "RS", TP: "TL", UK: "GB",
+  NH: "VU", VD: "VN", YD: "YE", RH: "ZW",
+};
+
+/** The code this one is stored as today. Unknown codes are returned unchanged. */
+export function canonicalCountry(code: string): string {
+  const upper = code.toUpperCase();
+  return DEPRECATED_COUNTRIES[upper] ?? upper;
+}
+
 export function countryName(code: string): string {
-  return COUNTRIES.find((c) => c.code === code)?.name ?? code;
+  const canonical = canonicalCountry(code);
+  return COUNTRIES.find((c) => c.code === canonical)?.name ?? code;
 }

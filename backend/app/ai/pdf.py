@@ -13,9 +13,12 @@ Everything here is a deliberate parseability choice, not a style choice:
 The layout is fixed and code-owned — the LLM writes words, never markup, so a bad
 generation can never produce an unparseable document.
 """
+import unicodedata
 from pathlib import Path
 
 from fpdf import FPDF
+
+from app.ai.sections import EDUCATION, ORDER
 
 PAGE_MARGIN = 14
 LINE = 4.6
@@ -44,14 +47,22 @@ def render(profile, resume: dict, out_path: Path) -> Path:
         _section(pdf, "Skills")
         _body(pdf, ", ".join(resume["skills"]))
 
-    for section in ("Experience", "Projects", "Achievements"):
-        items = [b for b in resume.get("bullets", []) if b.get("section") == section]
+    bullets = resume.get("bullets", [])
+    for section in ORDER:
+        items = [b for b in bullets if b.get("section") == section]
         if items:
             _section(pdf, section)
             _bullets(pdf, items)
 
-    if getattr(profile, "education", ""):
-        _section(pdf, "Education")
+    # The typed-in field, only when nothing was extracted for it. Education used
+    # to come from here alone, which meant a resume that listed a degree still
+    # printed no Education heading unless the same degree had also been typed
+    # into the profile by hand, and ats.py then warned about the missing section
+    # forever.
+    if getattr(profile, "education", "") and not any(
+        b.get("section") == EDUCATION for b in bullets
+    ):
+        _section(pdf, EDUCATION)
         _body(pdf, profile.education)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,17 +106,33 @@ def _bullets(pdf: FPDF, items: list[dict]) -> None:
 
     Bullets arrive ordered by relevance, so the same project can appear more than
     once; grouping first keeps each heading on the page exactly once.
-    """
-    grouped: dict[str, list[dict]] = {}
-    for item in items:
-        grouped.setdefault(item.get("title") or "", []).append(item)
 
-    for heading, group in grouped.items():
-        meta = " | ".join(
-            p for p in [group[0].get("company"), group[0].get("date_range")] if p
+    Grouped by title AND employer AND dates, not by title alone. Two spells as
+    "Software Engineer" at different companies collapsed into one heading under a
+    title-only key, and because the company and dates were then read off
+    whichever bullet happened to sort first, the merged entry printed one job's
+    dates over both jobs' work.
+    """
+    grouped: dict[tuple[str, str, str], list[dict]] = {}
+    for item in items:
+        key = (
+            (item.get("title") or "").strip(),
+            (item.get("company") or "").strip(),
+            (item.get("date_range") or "").strip(),
         )
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 5, _safe(heading), new_x="LMARGIN", new_y="NEXT")
+        grouped.setdefault(key, []).append(item)
+
+    for (title, company, dates), group in grouped.items():
+        # An untitled chunk used to print an empty bold line with an orphaned
+        # indent under it. Falling through to the employer, then to nothing,
+        # keeps the bullets attached to whatever context there is.
+        label = title or company
+        meta = " | ".join(
+            p for p in ([company] if company and company != label else []) + [dates] if p
+        )
+        if label:
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(0, 5, _safe(label), new_x="LMARGIN", new_y="NEXT")
         if meta:
             pdf.set_font("Helvetica", "I", 9)
             pdf.cell(0, LINE, _safe(meta), new_x="LMARGIN", new_y="NEXT")
@@ -119,10 +146,44 @@ def _bullets(pdf: FPDF, items: list[dict]) -> None:
         pdf.ln(0.5)
 
 
+# The punctuation a word processor substitutes while you type, which is most of
+# what actually turns up outside latin-1, plus the currency symbols that matter
+# to anyone writing an impact figure.
+_REPLACEMENTS = {
+    "–": "-", "—": "-", "‒": "-", "−": "-",
+    "‘": "'", "’": "'", "‚": ",", "‛": "'",
+    "“": '"', "”": '"', "„": '"',
+    "•": "-", "‣": "-", "●": "-", "·": "-",
+    "…": "...", " ": " ", " ": " ", " ": " ",
+    "→": "->", "≤": "<=", "≥": ">=",
+    "₹": "INR ", "€": "EUR ", "£": "GBP ", "¥": "JPY ",
+    "™": "(TM)", "®": "(R)", "′": "'", "″": '"',
+}
+
+
 def _safe(text: str) -> str:
-    """Core PDF fonts are latin-1; replace anything outside it (em dashes, emoji)."""
-    replacements = {"–": "-", "—": "-", "’": "'", "‘": "'",
-                    "“": '"', "”": '"', "•": "-", " ": " "}
-    for bad, good in replacements.items():
-        text = (text or "").replace(bad, good)
-    return text.encode("latin-1", "ignore").decode("latin-1")
+    """Make text printable by a core PDF font without deleting any of it.
+
+    Core fonts are latin-1, and this used to end in
+    `encode("latin-1", "ignore")`, which silently dropped whatever it could not
+    encode. A name spelled with an accent came out a letter short, a rupee figure
+    lost its currency, and nothing anywhere said so. On a resume that is the
+    worst failure mode available: the document is still valid, it is just quietly
+    wrong about the candidate's name.
+
+    Three passes, most preserving first. Substitute the punctuation a word
+    processor invents. Then decompose accented letters and drop only the marks,
+    so an accented "Jose" stays "Jose" rather than losing a letter. Only then
+    replace what is genuinely unrepresentable with "?", which at least shows that
+    something was there.
+    """
+    text = text or ""
+    for bad, good in _REPLACEMENTS.items():
+        text = text.replace(bad, good)
+
+    # NFKD splits an accented letter into a base letter plus a combining mark,
+    # so removing only the marks keeps the letters.
+    stripped = "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    )
+    return stripped.encode("latin-1", "replace").decode("latin-1")

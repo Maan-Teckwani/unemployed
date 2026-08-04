@@ -5,7 +5,13 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { COUNTRIES, COUNTRY_CODES, countryName } from "../lib/countries.ts";
+import {
+  canonicalCountry,
+  COUNTRIES,
+  COUNTRY_CODES,
+  countryName,
+  DEPRECATED_COUNTRIES,
+} from "../lib/countries.ts";
 import {
   asGenderStrict,
   checkName,
@@ -13,6 +19,7 @@ import {
   isValidCountry,
   isValidSeedInput,
   MAX_NAME_LENGTH,
+  normalizeCountry,
 } from "../lib/validate.ts";
 
 test("ordinary names pass untouched", () => {
@@ -77,6 +84,32 @@ test("the country list is well formed", () => {
   }
   assert.equal(countryName("IN"), "India");
   assert.equal(countryName("ZZ"), "ZZ", "an unknown code falls back to itself");
+});
+
+test("no country name appears twice", () => {
+  // The list is read by eye, and a reader picking "Germany" cannot tell which
+  // of two entries they got. The codes behind them do not compare equal, so the
+  // wall would show them as two separate countries.
+  const names = COUNTRIES.map((c) => c.name);
+  assert.equal(new Set(names).size, names.length, "no duplicate names");
+});
+
+test("codes retired from the list still resolve to their replacement", () => {
+  for (const [old, current] of Object.entries(DEPRECATED_COUNTRIES)) {
+    assert.ok(!COUNTRY_CODES.has(old), `${old} should be off the dropdown`);
+    assert.ok(COUNTRY_CODES.has(current), `${current} should be on it`);
+    assert.equal(canonicalCountry(old), current);
+    // A row written while the old code was on offer must keep working.
+    assert.ok(isValidCountry(old), `${old} is already stored on the wall`);
+    assert.equal(normalizeCountry(old), current);
+    assert.equal(countryName(old), countryName(current));
+  }
+});
+
+test("a current code is left alone by normalisation", () => {
+  assert.equal(canonicalCountry("IN"), "IN");
+  assert.equal(normalizeCountry("in"), "IN", "stored uppercase whatever was sent");
+  assert.equal(normalizeCountry("ZZ"), null, "an unknown code is not guessed at");
 });
 
 test("gender is an allowlist, and an unknown value is a rejection not a guess", () => {

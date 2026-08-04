@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { PageNav } from "@/components/page-nav";
 import { viewer } from "@/lib/viewer";
@@ -10,6 +9,7 @@ export const metadata: Metadata = {
   title: "How to use unemployed",
   description:
     "Half an hour of setup, then ten minutes a day. What to write down before you start, and the four ways to get a bad result.",
+  alternates: { canonical: "/guide" },
 };
 
 /**

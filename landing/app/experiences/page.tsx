@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
+
 import { ExperienceWall } from "@/components/experience-wall";
 import { PageNav } from "@/components/page-nav";
 import { PeopleProvider } from "@/components/people-provider";
+import { copy } from "@/lib/copy";
 import { recentExperiences } from "@/lib/db";
 import { viewer } from "@/lib/viewer";
+
+export const metadata: Metadata = {
+  title: copy.meta.pages.experiences,
+  description: copy.meta.pages.experiencesDescription,
+  alternates: { canonical: "/experiences" },
+};
 
 // Read per request, same reasoning as the home page: nothing here is worth
 // freezing at build time.

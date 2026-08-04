@@ -36,12 +36,24 @@ const CACHE_LIMIT = 500;
 export async function renderAvatar(seed: string, gender: Gender): Promise<string> {
   const key = `${gender}:${seed}`;
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    // Re-insert so a hit counts as recent use. A Map iterates in insertion
+    // order, which is the whole mechanism the eviction below relies on.
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
 
   const style = await getStyle();
   const svg = new Avatar(style, { seed, ...GENDER_OPTIONS[gender] }).toString();
 
-  if (cache.size >= CACHE_LIMIT) cache.clear();
+  // Drop the least recently used one, not all five hundred. Emptying the whole
+  // cache on every overflow meant the join page, which now asks for a dozen
+  // fresh faces at a time, could evict the wall the reader is about to scroll.
+  if (cache.size >= CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
   cache.set(key, svg);
   return svg;
 }

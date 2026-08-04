@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { countSignups, db, recentSignups, signupForGoogleSub, updateSignup, type SignupRow } from "@/lib/db";
-import { asGenderStrict, checkName, isValidCountry, isValidSeedInput } from "@/lib/validate";
+import { asGenderStrict, checkName, isValidSeedInput, normalizeCountry } from "@/lib/validate";
 import { CACHE, CORS, corsOptions } from "@/lib/cors";
 import { ipHash, isUniqueViolation } from "@/lib/ip";
 import { readLimit } from "@/lib/limit";
@@ -76,7 +76,10 @@ export async function POST(request: Request) {
   const { name, problem } = checkName(rawName);
   if (problem) return fail(problem, problem === "profane" ? 422 : 400, "name");
 
-  if (!isValidCountry(country)) return fail("country", 400, "country");
+  // Normalised, not just checked: a code retired from the dropdown still has to
+  // be stored as the one that replaced it, or the wall grows two Germanys.
+  const chosenCountry = normalizeCountry(country);
+  if (!chosenCountry) return fail("country", 400, "country");
   const chosenGender = asGenderStrict(gender);
   if (!chosenGender) return fail("generic", 400, "gender");
   if (!isValidSeedInput(seed)) return fail("generic", 400);
@@ -102,7 +105,7 @@ export async function POST(request: Request) {
           and created_at > now() - make_interval(mins => ${WINDOW_MINUTES})
       ), inserted as (
         insert into signups (name, country, gender, seed, ip_hash, google_sub, email)
-        select ${name}, ${country.toUpperCase()}, ${chosenGender}, ${seed},
+        select ${name}, ${chosenCountry}, ${chosenGender}, ${seed},
                ${ipHash(request)}, ${googleSub}, ${session.user?.email ?? null}
         from recent where n < ${MAX_PER_IP}
         returning id, name, country, gender, seed, created_at
@@ -142,13 +145,14 @@ export async function PUT(request: Request) {
   const { name, problem } = checkName(rawName);
   if (problem) return fail(problem, problem === "profane" ? 422 : 400, "name");
 
-  if (!isValidCountry(country)) return fail("country", 400, "country");
+  const chosenCountry = normalizeCountry(country);
+  if (!chosenCountry) return fail("country", 400, "country");
   const chosenGender = asGenderStrict(gender);
   if (!chosenGender) return fail("generic", 400, "gender");
   if (!isValidSeedInput(seed)) return fail("generic", 400);
 
   try {
-    const updated = await updateSignup(googleSub, name, country.toUpperCase(), chosenGender, seed);
+    const updated = await updateSignup(googleSub, name, chosenCountry, chosenGender, seed);
     if (!updated) return fail("notFound", 404);
     return Response.json(updated, { status: 200, headers: CORS });
   } catch (error) {

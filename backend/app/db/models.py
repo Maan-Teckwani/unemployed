@@ -55,6 +55,9 @@ class KBChunk(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     # project | experience | leadership | achievement | skill | certification
+    #   | education
+    # Free text rather than an enum on purpose: adding a kind is a code change,
+    # not a migration, and app/ai/parse.py owns the list that is accepted.
     type: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(300))
     context: Mapped[str | None] = mapped_column(String(300), nullable=True)

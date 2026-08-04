@@ -33,7 +33,9 @@ export function ProfileExperiences({ initialExperiences }: { initialExperiences:
   return (
     <div className="mt-8">
       {experiences.length === 0 ? (
-        <p className="text-muted-foreground text-sm">You haven't posted any experiences yet.</p>
+        <p className="text-muted-foreground text-sm">
+          You have not posted any experiences yet.
+        </p>
       ) : (
         <ul className="space-y-4">
           {experiences.map((exp) => (

@@ -8,8 +8,15 @@ import { COUNTRIES } from "@/lib/countries";
 import { GENDERS, type Gender } from "@/lib/gender-options";
 import { copy } from "@/lib/copy";
 
+/** How many faces to offer at once, and how many each "show more" adds. */
+const FACE_BATCH = 12;
+
 function newSeed(): string {
   return crypto.randomUUID().slice(0, 8);
+}
+
+function newSeeds(n: number): string[] {
+  return Array.from({ length: n }, newSeed);
 }
 
 /**
@@ -43,6 +50,16 @@ export function ProfileForm({
   const [country, setCountry] = useState(defaultCountry);
   const [gender, setGender] = useState<Gender>(defaultGender);
   const [seed, setSeed] = useState(initialSeed);
+  // The current face is always the first option, so someone editing their
+  // profile sees what they already have rather than hunting for it.
+  //
+  // Generated once in the initialiser and never regenerated. Rebuilding this on
+  // a gender change would reshuffle every tile under the reader's cursor, and
+  // the face they were about to click would become a different face.
+  const [faces, setFaces] = useState<string[]>(() => [
+    initialSeed,
+    ...newSeeds(FACE_BATCH - 1),
+  ]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -83,18 +100,7 @@ export function ProfileForm({
 
   return (
     <div className="rounded-lg border p-6">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 flex-col items-center gap-2">
-          <AvatarImage seed={seed} gender={gender} size={96} priority />
-          <button
-            type="button"
-            onClick={() => setSeed(newSeed())}
-            className="rounded-md border px-2 py-1 text-xs hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            {copy.join.reroll}
-          </button>
-        </div>
-
+      <div className="flex flex-col gap-6">
         <div className="flex-1 space-y-5">
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
@@ -120,10 +126,13 @@ export function ProfileForm({
                 id="country"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                className="h-9 w-full rounded-lg border bg-transparent px-2 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                // bg-background rather than transparent: some browsers paint the
+                // popup list from the select's own computed background, and a
+                // transparent one resolves to white under white text.
+                className="bg-background text-foreground h-9 w-full rounded-lg border px-2 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
+                  <option key={c.code} value={c.code} className="bg-background text-foreground">
                     {c.name}
                   </option>
                 ))}
@@ -153,9 +162,50 @@ export function ProfileForm({
             </fieldset>
           </div>
 
+          {/* A grid, not a reroll button. Rerolling asked the reader to gamble
+              one face at a time with no way back to the one two clicks ago. */}
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium">{copy.join.faceLabel}</legend>
+            <p className="text-muted-foreground pb-1 text-xs">{copy.join.faceHint}</p>
+            <div role="radiogroup" aria-label={copy.join.faceLabel} className="flex flex-wrap gap-2">
+              {faces.map((option, i) => {
+                const selected = option === seed;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={copy.join.faceOption(i + 1)}
+                    onClick={() => setSeed(option)}
+                    data-selected={selected || undefined}
+                    className="rounded-full transition-opacity focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none data-[selected]:ring-2 data-[selected]:ring-foreground data-[selected]:ring-offset-2 data-[selected]:ring-offset-background not-data-[selected]:opacity-60 hover:opacity-100"
+                  >
+                    <AvatarImage
+                      seed={option}
+                      gender={gender}
+                      size={56}
+                      priority={i < FACE_BATCH}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setFaces((current) => [...current, ...newSeeds(FACE_BATCH)])}
+              className="hover:bg-muted mt-1 rounded-md border px-2 py-1 text-xs focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              {copy.join.moreFaces}
+            </button>
+          </fieldset>
+
           {success && (
-            <p className="rounded-md border border-green-500 bg-green-50/10 text-green-600 px-3 py-2 text-sm font-medium" role="alert">
-              Profile updated successfully.
+            <p
+              className="border-foreground bg-foreground text-background rounded-md border px-3 py-2 text-sm font-medium"
+              role="status"
+            >
+              {copy.join.saved}
             </p>
           )}
 

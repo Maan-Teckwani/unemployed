@@ -262,6 +262,15 @@ export const REGIONS = [
   { id: "global", label: "Anywhere (no location filter)" },
 ] as const;
 
+/** One place the preferred-locations field can offer. Served by the backend. */
+export type City = {
+  id: string;
+  label: string;
+  region: string;
+  /** Other spellings of the same place, so searching "bangalore" finds it. */
+  aliases: string[];
+};
+
 export type CompanyRow = {
   id: number;
   source: string;
@@ -497,6 +506,11 @@ export const api = {
     req<void>(`/companies/${id}`, { method: "DELETE" }),
 
   getPreferences: () => req<Preferences>("/preferences"),
+  // Fetched, not bundled. The same list decides which jobs are ingested at all,
+  // so a copy kept here would eventually offer a city the backend has never
+  // heard of, which looks like it works and ranks nothing.
+  getCities: (region?: string) =>
+    req<City[]>(`/preferences/cities${region ? `?region=${encodeURIComponent(region)}` : ""}`),
   updatePreferences: (p: Preferences) =>
     req<Preferences>("/preferences", { method: "PUT", body: JSON.stringify(p) }),
   // Pure arithmetic over cached extractions — no LLM, so this is seconds.

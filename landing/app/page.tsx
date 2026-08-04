@@ -42,6 +42,8 @@ export default async function Home() {
 
         <GuideTeaser />
 
+        <Faq />
+
         <InstallSection />
 
         <Footer />
@@ -226,6 +228,64 @@ function GuideTeaser() {
           ))}
         </ol>
       </Reveal>
+    </Band>
+  );
+}
+
+/**
+ * The questions, as native details elements.
+ *
+ * No accordion component and no state: summary and details already do the open
+ * and close, the keyboard handling and the aria wiring, and they work with the
+ * script turned off. The answers stay in the document either way, which is what
+ * lets the structured data below describe something that is really there.
+ */
+function Faq() {
+  return (
+    <Band id="faq" className="border-t">
+      <Reveal className="grid gap-10 md:grid-cols-12 md:gap-14">
+        <div className="md:col-span-4">
+          <Label>{copy.faq.label}</Label>
+          <h2 className="mt-5 font-serif text-3xl leading-tight sm:text-4xl">
+            {copy.faq.heading}
+          </h2>
+        </div>
+
+        <div className="space-y-3 md:col-span-7 md:col-start-6">
+          {copy.faq.items.map((item) => (
+            <details key={item.q} className="card group">
+              <summary className="flex cursor-pointer list-none items-start gap-4 font-serif text-lg leading-snug rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none">
+                <span className="flex-1">{item.q}</span>
+                <span
+                  aria-hidden
+                  className="text-muted-foreground mt-1 shrink-0 font-mono text-xs transition-transform group-open:rotate-45"
+                >
+                  +
+                </span>
+              </summary>
+              <p className="text-muted-foreground mt-3 text-base leading-relaxed">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </Reveal>
+
+      <script
+        type="application/ld+json"
+        // Built from the same array the page renders, so the two cannot describe
+        // different answers. Search engines discard structured data that does
+        // not match the visible page, and rightly so.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: copy.faq.items.map((item) => ({
+              "@type": "Question",
+              name: item.q,
+              acceptedAnswer: { "@type": "Answer", text: item.a },
+            })),
+          }),
+        }}
+      />
     </Band>
   );
 }

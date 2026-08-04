@@ -33,7 +33,9 @@ export function Wall({ page, me }: { page: CrowdPage; me: SignupRow | null }) {
 
   return (
     <>
-      <section id="wall" className="scroll-mt-20 px-6 pt-28 md:px-12 lg:px-24">
+      {/* scroll-mt-24 like every other anchor target. Lenis reads this value off
+          the element to clear the fixed header, so an odd one out lands wrong. */}
+      <section id="wall" className="scroll-mt-24 px-6 pt-28 md:px-12 lg:px-24">
         <div className="mx-auto w-full max-w-5xl">
           <p className="text-muted-foreground font-mono text-[11px] tracking-[0.2em] uppercase">
             {copy.join.label}

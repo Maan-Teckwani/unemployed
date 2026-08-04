@@ -18,11 +18,17 @@ guarantee:
    mechanically rather than trusted.
 """
 import re
+from collections import defaultdict
 
-from app.ai.llm import generate_json
+from app.ai.llm import fits_context, generate_json
+from app.ai.sections import MAX_TOTAL, quota_for, section_for
 from app.db.models import KBChunk
 
-MAX_BULLETS = 8
+# Kept as the number quoted to the model, not as a hard stop on the output.
+# Sections are budgeted individually in `_validate_bullets`, because a single
+# global cap applied in arrival order let eight Experience bullets use the whole
+# resume and leave Projects, Education and Certifications printing nothing.
+MAX_BULLETS = MAX_TOTAL
 
 # ONE job per call. Asking a small model for summary + skills + bullets in a
 # single schema makes it answer the easy parts and silently drop the hard one,
@@ -56,6 +62,14 @@ def generate(profile, job, requirements: dict, chunks: list[KBChunk]) -> dict:
     """Generate a tailored resume. Returns bullets already validated for truthfulness."""
     if not chunks:
         return {"summary": "", "skills": [], "bullets": [], "rejected": []}
+
+    # The whole knowledge base goes into one call, and a knowledge base has no
+    # size limit. Past the context window Ollama drops the front of the prompt
+    # without saying so, which reads as the model having ignored the earliest
+    # half of a career. Dropping the least relevant chunks ourselves is worse
+    # than sending everything and better than being silently truncated: the
+    # chunks arrive ranked, so what goes is what mattered least to this job.
+    chunks = _fit_to_window(job, requirements, chunks)
 
     prompt = _build_prompt(job, requirements, chunks)
     raw = generate_json(_SYSTEM, prompt, timeout=300, max_tokens=2000)
@@ -115,6 +129,21 @@ def _evidenced(name: str, evidence: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", evidence) is not None
 
 
+def _fit_to_window(job, requirements: dict, chunks: list[KBChunk]) -> list[KBChunk]:
+    """Trim the tail of the ranked list until the prompt fits the context window.
+
+    Halving rather than dropping one at a time: this is a loop over string
+    building, and a knowledge base large enough to overflow is large enough that
+    one-by-one would rebuild the prompt hundreds of times.
+    """
+    kept = list(chunks)
+    while kept and not fits_context(_SYSTEM, _build_prompt(job, requirements, kept), 2000):
+        if len(kept) == 1:
+            break  # one enormous chunk. Send it and let the model see what fits.
+        kept = kept[: max(1, len(kept) // 2)]
+    return kept
+
+
 def _build_prompt(job, requirements: dict, chunks: list[KBChunk]) -> str:
     lines = [
         f"TARGET JOB: {job.title} at {job.company}",
@@ -144,6 +173,7 @@ def _validate_bullets(raw_bullets, by_id: dict[int, KBChunk]) -> tuple[list[dict
     """Keep only bullets that trace to a real chunk and invent no new numbers."""
     kept: list[dict] = []
     rejected: list[dict] = []
+    used: dict[str, int] = defaultdict(int)
     if not isinstance(raw_bullets, list):
         return kept, rejected
 
@@ -167,18 +197,26 @@ def _validate_bullets(raw_bullets, by_id: dict[int, KBChunk]) -> tuple[list[dict
             )
             continue
 
+        section = section_for(chunk.type)
+        # Budgeted per section rather than globally. Bullets arrive strongest
+        # first, so a full section drops its weakest candidates and every other
+        # section still gets to print.
+        if used[section] >= quota_for(section):
+            continue
+
+        used[section] += 1
         kept.append(
             {
                 "text": text,
                 "source_chunk_ids": [chunk.id],
-                "section": _section_for(chunk),
+                "section": section,
                 "title": chunk.title,
                 "context": chunk.context,
                 "company": chunk.company,
                 "date_range": chunk.date_range,
             }
         )
-        if len(kept) >= MAX_BULLETS:
+        if len(kept) >= MAX_TOTAL:
             break
     return kept, rejected
 
@@ -196,17 +234,6 @@ def _invented_numbers(text: str, chunk: KBChunk) -> list[str]:
 def _numbers(text: str) -> list[str]:
     """Digit groups, ignoring those glued to words (python3, s3, ipv6)."""
     return re.findall(r"(?<![A-Za-z])(\d[\d,.]*)", text or "")
-
-
-def _section_for(chunk: KBChunk) -> str:
-    """Which resume section this accomplishment belongs under."""
-    if chunk.type in ("experience", "leadership"):
-        return "Experience"
-    if chunk.type in ("project",):
-        return "Projects"
-    if chunk.type in ("achievement", "certification"):
-        return "Achievements"
-    return "Projects"
 
 
 def _as_int(value) -> int:

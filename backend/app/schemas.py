@@ -171,6 +171,17 @@ class PreferencesOut(PreferencesIn):
     model_config = {"from_attributes": True}
 
 
+class CityOut(BaseModel):
+    """One place the settings dropdown can offer."""
+
+    id: str
+    label: str
+    region: str
+    # Shown as "also written Bangalore", so someone looking for the name they
+    # know can find the entry that is actually stored.
+    aliases: list[str] = []
+
+
 # ---- Pipeline ----------------------------------------------------------------
 class PipelineRunIn(BaseModel):
     kind: str

@@ -19,6 +19,32 @@ from app.config import settings
 # of its own instructions. Set it once, here, for every call.
 CONTEXT_TOKENS = 16384
 
+# Roughly how many characters one token is worth for English prose. Deliberately
+# conservative: over-estimating the token count costs a warning, under-estimating
+# it costs the front of the prompt with nothing said about it.
+_CHARS_PER_TOKEN = 3.5
+
+# Leave room for the reply. num_ctx covers the prompt AND the generation, so a
+# prompt that exactly fills the window leaves the model nowhere to answer.
+_RESERVED_FOR_REPLY = 2048
+
+
+def fits_context(system: str, prompt: str, max_tokens: int = 1200) -> bool:
+    """Whether this call can be answered without the window silently truncating.
+
+    Ollama does not report truncation. It drops whatever does not fit off the
+    front and answers confidently with the rest, which for resume generation
+    reads as the model having quietly forgotten the first half of a career.
+    Callers that build a prompt from an unbounded list, and there are two of
+    them, should ask before sending.
+    """
+    return estimate_tokens(system, prompt) + max_tokens + _RESERVED_FOR_REPLY <= CONTEXT_TOKENS
+
+
+def estimate_tokens(system: str, prompt: str) -> int:
+    """A character-count approximation. Close enough to decide whether to trim."""
+    return int((len(system) + len(prompt)) / _CHARS_PER_TOKEN)
+
 
 def generate_json(
     system: str, prompt: str, timeout: float | None = 120.0, max_tokens: int = 1200
