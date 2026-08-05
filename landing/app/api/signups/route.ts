@@ -98,15 +98,20 @@ export async function POST(request: Request) {
     //
     // The email goes in but never comes back out: what the `returning` clause
     // hands over becomes a SignupRow, and a SignupRow is serialised into a page.
+    //
+    // `email_asked_at` goes in with it. Anyone reaching this insert filled in
+    // the form on /join, which says underneath it what the address is kept for,
+    // so the timestamp is true. Writing the two together is what makes it
+    // possible to tell later which rows were asked and which were not.
     const rows = (await sql`
       with recent as (
         select count(*)::int as n from signups
         where ip_hash = ${ipHash(request)}
           and created_at > now() - make_interval(mins => ${WINDOW_MINUTES})
       ), inserted as (
-        insert into signups (name, country, gender, seed, ip_hash, google_sub, email)
+        insert into signups (name, country, gender, seed, ip_hash, google_sub, email, email_asked_at)
         select ${name}, ${chosenCountry}, ${chosenGender}, ${seed},
-               ${ipHash(request)}, ${googleSub}, ${session.user?.email ?? null}
+               ${ipHash(request)}, ${googleSub}, ${session.user?.email ?? null}, now()
         from recent where n < ${MAX_PER_IP}
         returning id, name, country, gender, seed, created_at
       )

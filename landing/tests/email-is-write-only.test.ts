@@ -37,3 +37,38 @@ test("SignupRow has no email field", () => {
 test("the address is still written somewhere, or this file is guarding nothing", () => {
   assert.match(source, /update signups set email/i);
 });
+
+/**
+ * The consent invariant, checked in the two places an address is written.
+ *
+ * An address with no record of having asked for it is the exact failure this
+ * whole change was about: the old code took one from every returning user on a
+ * page they were redirected past. Both writes now carry `email_asked_at`, and
+ * a future edit that drops it would restore the old behaviour silently.
+ */
+test("every write of an address also records that we asked", () => {
+  const update = source.match(/update signups set email[\s\S]*?`/i);
+  assert.ok(update, "expected to find the update that stores an address");
+  assert.match(update[0], /email_asked_at\s*=\s*now\(\)/i);
+
+  const route = readFileSync(new URL("../app/api/signups/route.ts", import.meta.url), "utf8");
+  const insert = route.match(/insert into signups[\s\S]*?returning/i);
+  assert.ok(insert, "expected to find the insert that creates a row");
+  assert.ok(
+    !/\bemail\b/.test(insert[0]) || /email_asked_at/.test(insert[0]),
+    "the insert writes an address without recording that we asked",
+  );
+});
+
+/**
+ * The `jwt` callback is not allowed to touch the database again.
+ *
+ * It used to, and that is how addresses were collected from people who never
+ * saw the disclosure: /join redirects anyone with a row, so the sign-in pass
+ * was the only code they ran. Asking belongs on a page with a button on it.
+ */
+test("signing in does not write anything by itself", () => {
+  const auth = readFileSync(new URL("../auth.ts", import.meta.url), "utf8");
+  assert.ok(!/from "@\/lib\/db"/.test(auth), "auth.ts must not import the database");
+  assert.ok(!/\bsettleEmailAsk\b/.test(auth), "auth.ts must not settle the email ask");
+});

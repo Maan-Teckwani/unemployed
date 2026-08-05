@@ -1,8 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-import { rememberEmail } from "@/lib/db";
-
 /**
  * Google sign-in, with the session in a signed cookie rather than the database.
  *
@@ -11,11 +9,15 @@ import { rememberEmail } from "@/lib/db";
  * for. The only thing worth persisting is "which Google account owns which row
  * in `signups`", and that is one column there.
  *
- * The token keeps Google's `sub`: a stable, opaque id for the account. Email is
- * deliberately not stored anywhere, because content/schema.sql promises there
- * is nothing in this database worth leaking, and an email list is exactly the
- * thing that promise is about. `sub` identifies the account for linking without
- * being useful to anyone who gets hold of it.
+ * The token keeps Google's `sub` (a stable, opaque id for the account) and the
+ * email address. The address is stored in `signups.email`, but not from here.
+ * This file used to write it in the `jwt` callback, which meant it was taken
+ * from returning users on the way past: /join redirects anyone who already has
+ * a row straight to the install steps, so the people whose address was being
+ * recorded were exactly the people who never saw the sentence saying so.
+ *
+ * So the write moved to /join, where it is a thing someone agrees to rather
+ * than a side effect of arriving. See app/join/page.tsx and lib/db.ts.
  */
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [Google],
@@ -32,23 +34,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (profile?.sub) token.sub = profile.sub;
       if (profile?.email) token.email = profile.email;
 
-      // Fill in the address for anyone who joined before there was a column to
-      // put it in. Gated on `profile`, so this is one statement per sign-in
-      // rather than one per request, and `rememberEmail` ignores rows that
-      // already have one.
-      //
-      // Wrapped because this is the sign-in path. Sixty nine people an hour
-      // come through here, and not being able to reach one of them later is a
-      // far smaller problem than not letting them in now, so a database that
-      // is down or slow must lose the address rather than the signup.
-      if (profile?.sub && profile?.email) {
-        try {
-          await rememberEmail(profile.sub, profile.email);
-        } catch (error) {
-          console.error("could not record email", error);
-        }
-      }
-
+      // Nothing is written to the database here. The address rides the token
+      // so /join can offer it, and goes no further until someone says yes.
       return token;
     },
     session({ session, token }) {

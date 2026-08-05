@@ -2,9 +2,11 @@
 -- same as content/schema.sql. A separate file because it's a separate feature
 -- that should roll out (and roll back) independently of the signup wall.
 --
--- No migration tool here either. Posting requires an existing signup row —
--- there is no email or password anywhere in this database, only the name and
--- avatar someone already put on the wall.
+-- No migration tool here either. Posting requires an existing signup row, so
+-- there is no password anywhere in this database and nothing on an experience
+-- identifies its author beyond the name and avatar they already put on the
+-- wall. Addresses live in signups.email and are covered by the note there;
+-- nothing in this file reads one.
 
 create table if not exists experiences (
   id         bigint generated always as identity primary key,

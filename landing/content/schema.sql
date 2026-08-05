@@ -11,6 +11,10 @@
 -- read back out: no query that feeds a page selects it, and it is deliberately
 -- absent from the SignupRow type, because that type is serialised into the
 -- HTML every visitor receives.
+--
+-- An address is only ever written next to an `email_asked_at`, so "was this
+-- person told" is answerable from the row rather than from memory of what the
+-- copy said on the day.
 
 create table if not exists signups (
   id         bigint generated always as identity primary key,
@@ -38,9 +42,27 @@ alter table signups add column if not exists google_sub text;
 -- Nullable, and null for everyone who joined before this column existed. Their
 -- address was never stored and cannot be recovered: `google_sub` is opaque and
 -- Google offers no lookup from it back to an address. The only way those rows
--- ever get filled in is the next time that person signs in, which is what
--- auth.ts does.
+-- ever get filled in is that person coming back to /join and saying yes.
 alter table signups add column if not exists email text;
+
+-- When they were shown what happens to the address and answered.
+--
+-- Set on both answers, because the question is "have we asked", not "did they
+-- agree": someone who said no has to stay asked, or they get the same panel
+-- every time they open the page. Yes fills `email` in the same statement, no
+-- leaves it null. So the two states read cleanly:
+--
+--   email_asked_at is null                 never asked
+--   email_asked_at set, email null         asked, said no
+--   email_asked_at set, email set          asked, said yes
+--
+-- Nothing writes `email` without also writing this, so an address with no
+-- `email_asked_at` beside it is a bug rather than a state.
+--
+-- Null for everyone who joined before this column existed. They signed up under
+-- copy that said their address was not stored, so /join stops and asks them
+-- once rather than redirecting them past the sentence that replaced it.
+alter table signups add column if not exists email_asked_at timestamptz;
 
 -- The board read.
 create index if not exists signups_created_at_idx on signups (created_at desc);

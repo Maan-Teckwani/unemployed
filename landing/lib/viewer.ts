@@ -3,7 +3,7 @@ import "server-only";
 import type { Session } from "next-auth";
 
 import { auth } from "@/auth";
-import { signupForGoogleSub, type SignupRow } from "@/lib/db";
+import { needsEmailConsent, signupForGoogleSub, type SignupRow } from "@/lib/db";
 
 /**
  * Who is looking at the page, in the two parts the site actually cares about.
@@ -25,9 +25,22 @@ export type Viewer = {
   googleName: string | null;
   /** Their row on the wall, once they have finished a profile. */
   signup: SignupRow | null;
+  /**
+   * They are on the wall but have never been asked about their email address.
+   *
+   * True for everyone who joined under the old copy, which said the address was
+   * not stored. /join stops them once instead of redirecting, because that
+   * redirect is the reason they never read the sentence that replaced it.
+   */
+  needsEmailConsent: boolean;
 };
 
-const SIGNED_OUT: Viewer = { signedIn: false, googleName: null, signup: null };
+const SIGNED_OUT: Viewer = {
+  signedIn: false,
+  googleName: null,
+  signup: null,
+  needsEmailConsent: false,
+};
 
 export async function viewer(): Promise<Viewer> {
   // `Session | null`, not `Awaited<ReturnType<typeof auth>>`: the `auth` export
@@ -49,9 +62,15 @@ export async function viewer(): Promise<Viewer> {
 
   const googleName = session?.user?.name ?? null;
   try {
-    return { signedIn: true, googleName, signup: await signupForGoogleSub(sub) };
+    // One round trip each, in parallel: the second is a single indexed lookup
+    // on the same row, and pairing them keeps /join at one wait rather than two.
+    const [signup, needsConsent] = await Promise.all([
+      signupForGoogleSub(sub),
+      needsEmailConsent(sub),
+    ]);
+    return { signedIn: true, googleName, signup, needsEmailConsent: needsConsent };
   } catch (error) {
     console.error("profile lookup failed", error);
-    return { signedIn: true, googleName, signup: null };
+    return { signedIn: true, googleName, signup: null, needsEmailConsent: false };
   }
 }

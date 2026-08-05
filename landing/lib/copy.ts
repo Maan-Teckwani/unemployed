@@ -27,7 +27,7 @@ export const copy = {
         "What the interview rounds were actually like, written by people who sat them. Filter by company.",
       join: "Join the wall",
       joinDescription:
-        "Pick a name and a face, and the setup steps open up. No password, and your email is never shown.",
+        "Pick a name and a face, and the setup steps open up. No password, and your email is never shown on the wall.",
     },
   },
 
@@ -438,6 +438,19 @@ export const copy = {
     whyGoogle: "Google tells two people apart, and gives us an address to reach you on. Your email is kept, is never shown on the wall, and is never given to anyone else. Nothing is posted on your behalf.",
     notYou: "Wrong account?",
     signedInAs: (name: string) => `Signed in as ${name}`,
+
+    // Shown once to everyone who joined before there was an email column, which
+    // is most of the wall. They signed up under copy that said their address
+    // was not stored, so the only honest way to have it is to say that out loud
+    // and let them say no. "No thanks" is a real button and really does nothing.
+    consentHeading: "One thing has changed.",
+    consentBody:
+      "When you joined, this page said your email was not stored. It was true then. It is not what we want now: there is a new version coming, and no way to tell you about it. So we are asking instead of assuming.",
+    consentDetail:
+      "Your address is kept so we can email you about the tool. It is never shown on the wall, never given to anyone else, and nothing is posted on your behalf.",
+    consentAccept: "Keep my email",
+    consentDecline: "No thanks",
+    consentFailed: "That did not save. Try again in a moment.",
 
     // What the roughly one in twenty sees when the sign in does not complete.
     // The default page for this says "there is a problem with the server
