@@ -2,22 +2,27 @@
 
 Deliberately NOT "ask the LLM if this is a good match". A single opaque number
 cannot answer "why 62%?", cannot be tuned, and changes its mind between runs.
-Instead we compute four independent, inspectable features and combine them with
+Instead we compute five independent, inspectable features and combine them with
 a transparent weighted sum.
 
-    score = 0.35*required_coverage
-          + 0.30*semantic_similarity
-          + 0.20*preferred_coverage
+    score = 0.30*required_coverage
+          + 0.25*semantic_similarity
+          + 0.15*preferred_coverage
           + 0.15*keyword_overlap
+          + 0.15*preference_fit
 
 Why these weights: for a fresher, whether you actually have the *required*
 skills dominates. Semantic similarity is next — it catches relevance that exact
 strings miss ("built REST APIs" vs "backend services"). Preferred skills and raw
-keyword overlap are useful tie-breakers, not decisions.
+keyword overlap are useful tie-breakers, not decisions. `preference_fit` is what
+the user asked for (region, remote, preferred cities) and joined the other four
+once the preferences table existed.
 
-`preference_fit` (what the user *wants*) is intentionally absent: the preferences
-table does not exist yet. Adding a fifth feature that silently reads nothing
-would be worse than four honest ones.
+Two of the five need an extracted job description, and extraction costs about
+thirty seconds of local LLM per job. `score_cheap` below renormalises over the
+three that do not, so every job gets an honest estimate on the same scale and
+only the shortlist pays for the rest. WEIGHTS is the single source of truth for
+both paths; changing a number here changes both.
 """
 import re
 

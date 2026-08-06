@@ -1,7 +1,15 @@
-"""Thin, swappable wrapper around the local LLM (Ollama).
+"""Thin, swappable wrapper around the LLM.
 
-Everything that needs the model calls `generate_json` — a single choke point.
-To swap Ollama for something else later (e.g. OpenRouter), only this file changes.
+Everything that needs the model calls `generate_json` or `generate_text` — a
+single choke point, which is what makes the choice of model a config change
+rather than a code change.
+
+Two backends. **Ollama** is the default and needs no key: the whole product
+works offline and nothing about a job search leaves the machine. **Any
+OpenAI-compatible endpoint** is used instead when `LLM_API_KEY` is set, because
+a 3b model on a laptop CPU writes about thirteen tokens a second and the same
+work hosted takes about a second. One compatible path rather than an adapter
+per vendor: Groq, Gemini, OpenRouter and OpenAI all speak it.
 
 We force JSON output so extraction/generation returns something we can parse,
 and use a low temperature because these are extraction tasks, not creative ones.
@@ -50,6 +58,16 @@ def estimate_tokens(system: str, prompt: str) -> int:
     return int((len(system) + len(prompt)) / _CHARS_PER_TOKEN)
 
 
+def hosted() -> bool:
+    """Whether the LLM work goes to a hosted model rather than the local one.
+
+    A key is the switch. There is no separate "enabled" flag to get out of step
+    with it, and no key means the local default, which is the state a fresh
+    clone is in and the one the privacy claim is about.
+    """
+    return bool(settings.llm_api_key and settings.llm_base_url)
+
+
 def generate_json(
     system: str, prompt: str, timeout: float | None = 120.0, max_tokens: int = 1200
 ) -> dict:
@@ -63,27 +81,7 @@ def generate_json(
     told is slow and can watch progress on — document parsing — never for a
     call made inside a request the browser is holding open.
     """
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        "format": "json",  # Ollama guarantees the response is valid JSON.
-        # Generating one resume is several calls a minute or two apart. Ollama
-        # unloads a model five minutes after the last one by default, and a
-        # cold load of a 3b model costs seconds that the user watches.
-        "keep_alive": KEEP_ALIVE,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": max_tokens,
-            "num_ctx": CONTEXT_TOKENS,
-        },
-    }
-    resp = httpx.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=timeout)
-    resp.raise_for_status()
-    content = resp.json()["message"]["content"]
+    content = _chat(system, prompt, timeout, max_tokens, as_json=True)
     return json.loads(content)
 
 
@@ -96,13 +94,33 @@ def generate_text(
     means every one of them has to survive escaping, which is a needless way to
     lose a resume.
     """
+    return _chat(system, prompt, timeout, max_tokens, as_json=False)
+
+
+def _chat(
+    system: str, prompt: str, timeout: float | None, max_tokens: int, as_json: bool
+) -> str:
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
+    ]
+    return (
+        _hosted_chat(messages, timeout, max_tokens, as_json)
+        if hosted()
+        else _ollama_chat(messages, timeout, max_tokens, as_json)
+    )
+
+
+def _ollama_chat(
+    messages: list[dict], timeout: float | None, max_tokens: int, as_json: bool
+) -> str:
     payload = {
         "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
+        "messages": messages,
         "stream": False,
+        # Generating one resume is several calls a minute or two apart. Ollama
+        # unloads a model five minutes after the last one by default, and a
+        # cold load of a 3b model costs seconds that the user watches.
         "keep_alive": KEEP_ALIVE,
         "options": {
             "temperature": 0.1,
@@ -110,6 +128,35 @@ def generate_text(
             "num_ctx": CONTEXT_TOKENS,
         },
     }
+    if as_json:
+        payload["format"] = "json"  # Ollama guarantees the response is valid JSON.
     resp = httpx.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=timeout)
     resp.raise_for_status()
     return resp.json()["message"]["content"]
+
+
+def _hosted_chat(
+    messages: list[dict], timeout: float | None, max_tokens: int, as_json: bool
+) -> str:
+    """One OpenAI-compatible call, whoever is serving it.
+
+    The timeout is not passed through as None. Locally that means "wait, the
+    user can see progress"; against someone else's API it means a request that
+    can hang for the rest of the process's life.
+    """
+    payload = {
+        "model": settings.llm_model,
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": max_tokens,
+    }
+    if as_json:
+        payload["response_format"] = {"type": "json_object"}
+    resp = httpx.post(
+        f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+        json=payload,
+        headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+        timeout=timeout if timeout is not None else 300.0,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
