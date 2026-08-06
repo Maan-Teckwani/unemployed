@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 export function LatexPanel({ resume }: { resume: Resume }) {
   const [open, setOpen] = useState(false);
   const sections = resume.ats_report.latex_sections ?? [];
+  const chosen = sections.filter((s) => s.mode === "entries" && s.rewritten);
 
   async function copy() {
     try {
@@ -39,10 +40,41 @@ export function LatexPanel({ resume }: { resume: Resume }) {
             title={s.reason}
           >
             {s.heading}
-            {s.rewritten ? " · rewritten" : " · kept unchanged"}
+            {!s.rewritten
+              ? " · kept unchanged"
+              : s.mode === "entries"
+                ? " · projects chosen"
+                : " · rewritten"}
           </Badge>
         ))}
       </div>
+
+      {/* Which projects are on the page, when they were chosen rather than
+          reworded. Without this the swap is invisible: the document looks like
+          the one that was uploaded until you read it line by line. */}
+      {chosen.map((s) => (
+        <div key={s.heading} className="rounded-md border bg-muted/20 p-3 space-y-2">
+          <p className="text-xs font-medium">
+            {s.heading}: picked from your knowledge base for this job
+          </p>
+          <ul className="space-y-1">
+            {(s.entries ?? []).map((e, i) => (
+              <li key={`${e.title}-${i}`} className="text-xs">
+                <span className="font-medium">{e.title}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {e.bullets.length} bullet{e.bullets.length === 1 ? "" : "s"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            {s.chosen_by === "ranking"
+              ? "Chosen by relevance to this job, quoting your knowledge base word for word. Your local model could not produce a valid selection, so nothing here was rewritten."
+              : "Chosen and reworded for this job. Every number and name traces back to an accomplishment you wrote."}
+          </p>
+        </div>
+      ))}
 
       {sections.some((s) => !s.rewritten) && (
         <p className="text-xs text-muted-foreground">

@@ -186,11 +186,27 @@ export type AtsReport = {
 };
 
 /** Per-section outcome of tailoring a LaTeX template, in document order. */
+/** One entry the backend chose from the knowledge base to fill a slot. */
+export type LatexEntry = {
+  title: string;
+  chunk_ids: number[];
+  bullets: string[];
+};
+
 export type LatexSection = {
   name: string;
   heading: string;
   rewritten: boolean;
   reason?: string;
+  /**
+   * How this section was produced. "entries" means the projects in it were
+   * chosen from the knowledge base and may not be the ones in the template;
+   * "rewrite" means only the wording changed; "kept" means nothing did.
+   */
+  mode?: "entries" | "rewrite" | "kept";
+  /** Whether the model picked the projects, or the relevance ranking did. */
+  chosen_by?: "model" | "ranking";
+  entries?: LatexEntry[];
 };
 
 export type Resume = {

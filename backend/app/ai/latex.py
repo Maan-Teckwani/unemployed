@@ -20,16 +20,24 @@ and it does not compile, and the user finds out in Overleaf rather than here.
 import re
 from typing import NamedTuple
 
-from app.ai.generate_resume import _numbers
-from app.ai.llm import generate_text
+from app.ai import latex_entries
+from app.ai.generate_resume import _invented_numbers, _numbers
+from app.ai.kb_groups import Group, describe, group_chunks
+from app.ai.latex_entries import Entry, find_entries
+from app.ai.llm import fits_context, generate_json, generate_text
 from app.db.models import KBChunk
 
 # Headings vary by template, so match them loosely. Order matters: the first
 # keyword found in the heading wins, and "Technical Skills" must not be read as
 # an experience section just because some template calls it "Skills & Experience".
+#
+# Projects goes first because a heading naming both wins for projects. Real
+# templates title a projects section "Product Experience & Projects", and read
+# as experience it gets the wrong rewrite rules and the wrong candidates. A
+# heading naming only one of the two is unaffected either way.
 _HEADING_MAP = (
-    ("experience", ("experience", "employment", "internship", "work history")),
     ("projects", ("project",)),
+    ("experience", ("experience", "employment", "internship", "work history")),
     ("certifications", ("certification", "certificate", "licens", "course")),
     ("skills", ("skill", "technolog")),
 )
@@ -89,19 +97,39 @@ def tailor(latex: str, chunks: list[KBChunk], requirements: dict) -> tuple[str, 
         if section.name not in REWRITABLE:
             continue
         original = latex[section.start : section.end]
-        entry = {"name": section.name, "heading": section.heading, "rewritten": False}
+        entry = {
+            "name": section.name,
+            "heading": section.heading,
+            "rewritten": False,
+            "mode": "kept",
+        }
 
         try:
-            candidate = rewrite_section(section.name, original, chunks, requirements)
-            problem = validate(original, candidate, chunks, section.name)
-            if problem:
-                # One retry, told exactly what it broke. A small model usually
-                # fails by reflowing structure it was asked to copy, and that is
-                # the kind of mistake it can fix when the mistake is named.
-                candidate = rewrite_section(
-                    section.name, original, chunks, requirements, correction=problem
-                )
+            # Choosing entries is strictly better when it is available: it can
+            # put a project on the page that the template never mentioned,
+            # which rewording never can. It is only available in sections whose
+            # entries repeat and whose headings vary only inside braces, so
+            # most sections still take the path below.
+            candidate = rebuild_entries(section.name, original, chunks, requirements, entry)
+            if candidate is None:
+                candidate = rewrite_section(section.name, original, chunks, requirements)
                 problem = validate(original, candidate, chunks, section.name)
+                if problem:
+                    # One retry, told exactly what it broke. A small model usually
+                    # fails by reflowing structure it was asked to copy, and that is
+                    # the kind of mistake it can fix when the mistake is named.
+                    candidate = rewrite_section(
+                        section.name, original, chunks, requirements, correction=problem
+                    )
+                    problem = validate(original, candidate, chunks, section.name)
+                entry["mode"] = "rewrite"
+            else:
+                # A tripwire rather than a filter here. Rebuilt sections change
+                # only the contents of brace groups that held no command, so an
+                # altered command sequence means this module has a bug, not that
+                # a model misbehaved.
+                problem = validate(original, candidate, chunks, section.name)
+                entry["mode"] = "entries"
         except Exception as e:  # noqa: BLE001 - one dead section must not lose the rest
             entry["reason"] = f"the model failed: {e}"
             report.append(entry)
@@ -109,6 +137,8 @@ def tailor(latex: str, chunks: list[KBChunk], requirements: dict) -> tuple[str, 
 
         if problem:
             entry["reason"] = problem
+            entry["mode"] = "kept"
+            entry.pop("entries", None)
         else:
             out = out[: section.start] + candidate + out[section.end :]
             entry["rewritten"] = True
@@ -217,6 +247,297 @@ def rewrite_section(
         f"better sentences:\n{body}"
     )
     return _strip_fences(generate_text(_SYSTEM, prompt, timeout=None, max_tokens=3000))
+
+
+_SELECT_SYSTEM = """You are choosing which of a candidate's real projects belong on their resume for one specific job, and writing the bullets for each.
+
+You are given every project and job the candidate has, numbered, with their real accomplishments under them. You are filling a fixed number of slots on a page that already exists.
+
+CHOOSING
+- Read all of them before choosing. The best evidence for this job is often not the first one listed.
+- Pick the ones this job actually asks for, strongest first. A project that shows the required skills beats a bigger project that does not.
+- Use each project at most once.
+- Fill every slot.
+
+WRITING
+- Each slot needs EXACTLY the number of bullets it asks for, no more and no fewer.
+- Every bullet must come from ONE accomplishment of the project filling that slot, and must carry that accomplishment's id in "source_id".
+- Start with a strong past-tense verb. One sentence, at most 30 words.
+- Where the accomplishment genuinely supports it, use the job's own words for the same thing: if it says "RESTful APIs" and the accomplishment says "REST services", write "RESTful APIs".
+- Never state a number, percentage or scale that is not already in the accomplishment you cite.
+- Never claim a technology the accomplishment does not show.
+
+Respond with JSON in exactly this shape:
+{"slots":[{"project":2,"bullets":[{"source_id":17,"text":"Built X using Y"},{"source_id":18,"text":"..."}]}]}"""
+
+
+def rebuild_entries(
+    name: str,
+    body: str,
+    chunks: list[KBChunk],
+    requirements: dict,
+    report: dict,
+) -> str | None:
+    r"""Refill this section's entries from the knowledge base, or None to decline.
+
+    This is the part rewording cannot do. A candidate with nine projects and a
+    template with three slots should see the three that fit this job, not the
+    three that happened to be in the file when they uploaded it.
+
+    Declining is the common answer and is never a failure: the caller falls
+    back to rewording, which is what every section did before this existed.
+    Everything that could produce a half-filled or self-contradicting section
+    declines instead, so there is no state where one slot is a chosen project
+    and the next is a leftover from the template.
+    """
+    # A skills or certifications section is a list of facts, not entries with
+    # bullets. `find_entries` would already decline for the templates we have
+    # seen, but relying on that would make this correct by accident.
+    if name in _LIST_SECTIONS:
+        return None
+
+    entries = find_entries(body)
+    if entries is None:
+        return None
+
+    groups = group_chunks(chunks)
+    if len(groups) < len(entries):
+        return None  # nothing to choose between: rewording is the honest answer
+
+    roles = _hole_roles(body, entries)
+    # A slot can only be filled by a project with at least as many
+    # accomplishments as it has bullets, because writing four bullets from two
+    # facts is how invention starts. Matching slot to project is done when the
+    # slots are known; this only drops projects too small for any of them.
+    needed = max(len(e.bullets) for e in entries)
+    usable = [g for g in groups if len(g.chunks) >= min(len(e.bullets) for e in entries)]
+    if len(usable) < len(entries):
+        report["reason"] = (
+            f"no {len(entries)} projects in the knowledge base have enough "
+            "accomplishments for this section's bullets"
+        )
+        return None
+
+    # A shortlist, not the whole knowledge base. Twenty eight projects in one
+    # prompt is both slow and, measurably, too much to hold: asked to fill four
+    # slots from that many, a 3b model returned two. They arrive ranked, so the
+    # ones that go are the ones least like this job.
+    usable = _fit_groups(name, entries, usable[: len(entries) * 3], requirements, needed)
+
+    plan = _select(name, entries, usable, requirements, needed)
+    chosen_by = "model"
+    if plan is None:
+        # The model could not produce a usable plan. Ranking still can, and a
+        # section built from the best-matching projects in the candidate's own
+        # words beats one built from whichever projects were in the file on the
+        # day it was uploaded. Nothing here is generated, so nothing here can
+        # be invented.
+        plan = _default_plan(entries, usable)
+        chosen_by = "ranking"
+    if plan is None:
+        return None
+    report["chosen_by"] = chosen_by
+
+    values: dict[latex_entries.Hole, str] = {}
+    chosen: list[dict] = []
+    for entry, slot in zip(entries, plan):
+        group = usable[slot["project"]]
+        lead = _hole_values(roles, group)
+        if lead is None:
+            return None
+        for hole, value in zip(entry.lead, lead):
+            values[hole] = latex_entries.escape(value)
+        for hole, bullet in zip(entry.bullets, slot["bullets"]):
+            values[latex_entries.Hole(hole.start, hole.end)] = latex_entries.escape(
+                bullet["text"]
+            )
+        chosen.append(
+            {
+                "title": group.title,
+                "chunk_ids": [b["source_id"] for b in slot["bullets"]],
+                "bullets": [b["text"] for b in slot["bullets"]],
+            }
+        )
+
+    report["entries"] = chosen
+    return latex_entries.fill(body, values)
+
+
+def _select(
+    name: str, entries: list[Entry], groups: list[Group], requirements: dict, detail: int
+) -> list[dict] | None:
+    """One call: which project fills each slot, and what its bullets say.
+
+    Everything the model returns is checked against the groups it was shown. A
+    slot citing an accomplishment from a different project, or returning two
+    bullets where the template has three, fails the whole section rather than
+    that slot, because a section half rebuilt and half left alone can show the
+    same project twice.
+    """
+    slots = "\n".join(
+        f"Slot {i + 1}: {len(entry.bullets)} bullet(s)" for i, entry in enumerate(entries)
+    )
+    catalogue = "\n\n".join(
+        f"PROJECT {i}\n{describe(group, limit=detail)}" for i, group in enumerate(groups)
+    )
+    prompt = _select_prompt(name, slots, catalogue, requirements)
+    raw = generate_json(_SELECT_SYSTEM, prompt, timeout=300, max_tokens=2000)
+
+    plan = raw.get("slots")
+    if not isinstance(plan, list) or len(plan) != len(entries):
+        return None
+
+    used: set[int] = set()
+    out: list[dict] = []
+    for entry, slot in zip(entries, plan):
+        if not isinstance(slot, dict):
+            return None
+        index = _as_index(slot.get("project"), len(groups))
+        if index is None or index in used:
+            return None
+        used.add(index)
+
+        allowed = {c.id: c for c in groups[index].chunks}
+        bullets = slot.get("bullets")
+        if not isinstance(bullets, list) or len(bullets) != len(entry.bullets):
+            return None
+
+        kept = []
+        for item in bullets:
+            if not isinstance(item, dict):
+                return None
+            text = str(item.get("text") or "").strip()
+            source = allowed.get(_as_index(item.get("source_id"), None))
+            if not text or source is None:
+                return None
+            # Checked against the one accomplishment it cites, not against the
+            # whole knowledge base: a figure that is true of another project is
+            # still a false claim about this one.
+            if _invented_numbers(text, source):
+                return None
+            kept.append({"source_id": source.id, "text": text})
+
+        out.append({"project": index, "bullets": kept})
+    return out
+
+
+def _default_plan(entries: list[Entry], groups: list[Group]) -> list[dict] | None:
+    """The same choice, made by ranking instead of by a model.
+
+    Each slot takes the best-matching project not already used that has enough
+    accomplishments to fill it, and the bullets are those accomplishments as
+    the candidate wrote them. Untailored phrasing, but the projects are still
+    chosen for this job, and a sentence copied out of the knowledge base cannot
+    claim anything the knowledge base does not.
+
+    This is what runs when the local model is too small to answer, which on a
+    3b model is often. Without it the feature is only as good as the weakest
+    model someone happens to be running.
+    """
+    remaining = list(range(len(groups)))  # already best first
+    plan = []
+    for entry in entries:
+        want = len(entry.bullets)
+        pick = next((i for i in remaining if len(groups[i].chunks) >= want), None)
+        if pick is None:
+            return None
+        remaining.remove(pick)
+        plan.append(
+            {
+                "project": pick,
+                "bullets": [
+                    {"source_id": c.id, "text": (c.accomplishment or "").strip()}
+                    for c in groups[pick].chunks[:want]
+                ],
+            }
+        )
+    return plan
+
+
+def _select_prompt(name: str, slots: str, catalogue: str, requirements: dict) -> str:
+    required = list(requirements.get("required_skills", []))
+    preferred = list(requirements.get("preferred_skills", []))
+    responsibilities = list(requirements.get("responsibilities", []))[:6]
+    return (
+        f"THIS SECTION: {_SECTION_RULES.get(name, '')}\n\n"
+        "TARGET JOB\n"
+        f"Required skills: {', '.join(required) or 'not specified'}\n"
+        f"Preferred skills: {', '.join(preferred) or 'not specified'}\n"
+        + (f"Responsibilities: {'; '.join(responsibilities)}\n" if responsibilities else "")
+        + f"\nSLOTS TO FILL (in order, on the page):\n{slots}\n\n"
+        f"THE CANDIDATE'S PROJECTS (the only facts that exist):\n{catalogue}"
+    )
+
+
+def _fit_groups(
+    name: str, entries: list[Entry], groups: list[Group], requirements: dict, detail: int
+) -> list[Group]:
+    """Drop the least relevant projects until the prompt fits the context window.
+
+    Ollama truncates the front of an oversized prompt without saying so, which
+    reads as the model having ignored the best half of a career. Groups go
+    whole rather than losing chunks from each: a project short of its
+    accomplishments cannot fill a slot, so trimming that way would starve the
+    slots instead of shortening the list.
+    """
+    kept = list(groups)
+    slots = "\n".join(f"Slot {i + 1}: {len(e.bullets)} bullet(s)" for i, e in enumerate(entries))
+    while len(kept) > len(entries):
+        catalogue = "\n\n".join(
+            f"PROJECT {i}\n{describe(g, limit=detail)}" for i, g in enumerate(kept)
+        )
+        if fits_context(_SELECT_SYSTEM, _select_prompt(name, slots, catalogue, requirements), 2000):
+            break
+        kept = kept[: max(len(entries), len(kept) // 2)]
+    return kept
+
+
+def _hole_roles(body: str, entries: list[Entry]) -> list[str]:
+    """What each heading position holds, voted on across the entries."""
+    return [
+        latex_entries.hole_role([body[e.lead[i].start : e.lead[i].end] for e in entries])
+        for i in range(len(entries[0].lead))
+    ]
+
+
+def _hole_values(roles: list[str], group: Group) -> list[str] | None:
+    """The heading for one chosen project, or None if it cannot be written.
+
+    All of it or none of it. A heading with a new project name beside the old
+    project's dates is worse than the untouched template, and it is the one
+    failure here that compiles cleanly and reads as true.
+    """
+    values: list[str] = []
+    text_holes = 0
+    for role in roles:
+        if role == "date":
+            value = group.date_range
+        elif text_holes == 0:
+            value = group.title
+        elif text_holes == 1:
+            # The second line of a heading is a subtitle: what this was built
+            # with, or what it was. Technologies first because they are the
+            # part a screener reads, and `context` is whatever the importer
+            # had left over.
+            value = ", ".join(group.technologies[:4]) or group.context
+        else:
+            return None  # a third free-text position has nothing to fill it
+        if not value:
+            return None
+        if role != "date":
+            text_holes += 1
+        values.append(value)
+    return values
+
+
+def _as_index(value, limit: int | None) -> int | None:
+    try:
+        index = int(value)
+    except (TypeError, ValueError):
+        return None
+    if limit is None:
+        return index
+    return index if 0 <= index < limit else None
 
 
 def validate(
@@ -405,8 +726,16 @@ def _known(word: str, vocabulary: set[str]) -> bool:
 
 
 def _chunk_text(chunk: KBChunk) -> str:
+    r"""Everything about a chunk the page is allowed to say.
+
+    Company, context and dates are in here because entries are now filled from
+    the knowledge base, not just reworded. Without them, writing a real
+    employer into a real heading reads as an invented name and every rebuilt
+    entry is rejected by the check meant to catch the opposite mistake.
+    """
     return (
-        f"{chunk.title} {chunk.accomplishment} {chunk.impact or ''} "
+        f"{chunk.title} {chunk.company or ''} {chunk.context or ''} "
+        f"{chunk.date_range or ''} {chunk.accomplishment} {chunk.impact or ''} "
         f"{' '.join(chunk.technologies or [])}"
     )
 
