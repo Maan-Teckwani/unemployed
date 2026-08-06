@@ -131,8 +131,17 @@ _HINTS = (
     ("data", r"\b(data|analytics|etl|warehouse|business intelligence|\bbi\b)\b"),
     ("devops", r"\b(devops|infrastructure|kubernetes|cloud|reliability|observability|"
                r"platform|deployment)\b"),
+    # "Member of Technical Staff" is what Pure Storage, VMware, Nutanix, Oracle
+    # and several AI labs call a software engineer, and it contains none of the
+    # words above. Twenty four of them were sitting in "other" on a real
+    # database, which is to say filtered out of a fresher's list entirely.
+    #
+    # A hint rather than a strong signal, so the specific families still win:
+    # "Member of Technical Staff - Firmware Engineer" is hardware and "Member of
+    # Technical Staff, Fleet Reliability" is devops, both decided before this.
     ("software", r"\b(engineer|engineering|developer|programming|software|backend|frontend|"
-                 r"fullstack|android|ios|mobile|api|web)\b"),
+                 r"fullstack|android|ios|mobile|api|web|"
+                 r"member of (the )?technical staff|mts)\b"),
 )
 
 

@@ -75,3 +75,28 @@ def test_every_result_is_a_known_family() -> None:
     ]
     for title in titles:
         assert classify(title) in (*FAMILIES, "other")
+
+
+@pytest.mark.parametrize(
+    ("title", "family"),
+    [
+        # What Pure Storage, VMware, Nutanix, Oracle and several AI labs call a
+        # software engineer. It contains none of the usual words, so twenty four
+        # of them were sitting in "other" and filtered out of a fresher's list.
+        ("Member of Technical Staff", "software"),
+        ("Member of Technical Staff, FlashBlade", "software"),
+        ("Member Of Technical Staff - Golang / Java", "software"),
+        ("MTS - Software Development", "software"),
+        # A hint rather than a strong signal, so the specific families still win.
+        ("Member of Technical Staff - Firmware Engineer", "hardware"),
+        ("Member of Technical Staff, Fleet Reliability", "devops"),
+        ("MTS - AI / MLOps", "ai_ml"),
+        # Bare "QA" is not a signal anywhere in this module: the qa patterns all
+        # want "QA Engineer", "SDET", "test automation" and so on. So this lands
+        # in software, which is the wrong label and the right outcome, since
+        # both families are on by default and the job is shown either way.
+        ("Member Of Technical Staff - QA", "software"),
+    ],
+)
+def test_member_of_technical_staff_is_an_engineering_title(title, family) -> None:
+    assert classify(title) == family

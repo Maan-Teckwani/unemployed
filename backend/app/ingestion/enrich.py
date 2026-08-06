@@ -168,13 +168,23 @@ def rescore_all(db: Session) -> dict:
             counts["filtered"] += 1
             continue
 
+        # Embed it now if it has never been embedded. This used to skip such a
+        # job and leave whatever match row it already had, which is wrong in the
+        # exact case that matters: a job the filters used to reject and now
+        # accept keeps its old rejection and stays invisible. Widening a filter
+        # appeared to do nothing.
+        #
+        # Cheap enough to belong here. This is a local sentence-transformer, not
+        # an LLM, and only jobs that survive the filters above ever reach it, so
+        # a re-score embeds a handful of newly eligible jobs rather than
+        # thousands of rejected ones.
         embedding = db.get(JobEmbedding, job.id)
-        if embedding is None:
-            continue  # never embedded; the next enrich run will handle it
+        vector = (
+            list(embedding.embedding) if embedding is not None else _embedding(db, job, {})
+        )
 
         # Re-score at whatever tier this job already has data for.
         row = db.get(JobRequirements, job.id)
-        vector = list(embedding.embedding)
         result = (
             score(job, _as_dict(row), vector, candidate, preferences)
             if row is not None
