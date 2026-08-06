@@ -85,12 +85,19 @@ def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_
 
 
 def _generate_latex(db: Session, job: Job, requirements: dict, chunks: list) -> dict:
-    """Rewrite the default template's sections for this job and store the document.
+    """Fill the default template's sections for this job and store the document.
 
-    No PDF and no bullets: the document *is* the output, and the user compiles it
-    in Overleaf where their template already lives. What each section did is
-    recorded in `ats_report` so the UI can say "kept unchanged" rather than
-    leaving the user to diff it themselves.
+    No PDF: the document *is* the output, and the user compiles it in Overleaf
+    where their template already lives. What each section did is recorded in
+    `ats_report` so the UI can say "kept unchanged" rather than leaving the user
+    to diff it themselves.
+
+    Bullets are stored for the sections whose entries were chosen from the
+    knowledge base rather than reworded. They carry the same
+    `source_chunk_ids` the PDF path uses, so `_as_dict` resolves them into the
+    accomplishment each one came from and the UI can prove the claim. A section
+    that was only reworded has no bullets to attribute: its sentences started
+    life in the user's own document.
     """
     template = db.scalar(
         select(ResumeTemplate).where(ResumeTemplate.is_default.is_(True))
@@ -108,12 +115,32 @@ def _generate_latex(db: Session, job: Job, requirements: dict, chunks: list) -> 
         job_id=job.id,
         headline=job.title,
         latex=document,
+        bullets=_chosen_bullets(sections),
         ats_report={"latex_sections": sections},
     )
     db.add(resume)
     db.commit()
     db.refresh(resume)
     return _as_dict(resume, db)
+
+
+def _chosen_bullets(sections: list[dict]) -> list[dict]:
+    """Flatten the per-section report into the bullet shape the UI already reads.
+
+    Same keys as the PDF path produces, so `_as_dict` and the editor need no
+    idea which renderer wrote them.
+    """
+    return [
+        {
+            "text": text,
+            "source_chunk_ids": [chunk_id],
+            "section": section["name"],
+            "title": entry["title"],
+        }
+        for section in sections
+        for entry in section.get("entries", [])
+        for text, chunk_id in zip(entry["bullets"], entry["chunk_ids"])
+    ]
 
 
 @router.get("/{resume_id}/latex")
