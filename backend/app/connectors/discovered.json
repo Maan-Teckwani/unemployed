@@ -691,5 +691,47 @@
     "name": "PayPal",
     "total_jobs": 4,
     "india_jobs": 3
+  },
+  {
+    "source": "workday",
+    "token": "micron.wd1/micron/External",
+    "name": "Micron",
+    "total_jobs": 301,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "cadence.wd1/cadence/External_Careers",
+    "name": "Cadence",
+    "total_jobs": 198,
+    "india_jobs": 14
+  },
+  {
+    "source": "workday",
+    "token": "amat.wd1/amat/External",
+    "name": "Applied Materials",
+    "total_jobs": 186,
+    "india_jobs": 3
+  },
+  {
+    "source": "workday",
+    "token": "ms.wd5/ms/External",
+    "name": "Morgan Stanley",
+    "total_jobs": 129,
+    "india_jobs": 16
+  },
+  {
+    "source": "workday",
+    "token": "3m.wd1/3m/search",
+    "name": "3M",
+    "total_jobs": 130,
+    "india_jobs": 11
+  },
+  {
+    "source": "workday",
+    "token": "thomsonreuters.wd5/thomsonreuters/External_Career_Site",
+    "name": "Thomson Reuters",
+    "total_jobs": 55,
+    "india_jobs": 20
   }
 ]
