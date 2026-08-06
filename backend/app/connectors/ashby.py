@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from app.connectors.base import TIMEOUT, RawJob, strip_html
+from app.connectors.base import HEADERS, TIMEOUT, RawJob, strip_html
 from app.ingestion.relevance import DEFAULT_REGION
 
 URL = "https://api.ashbyhq.com/posting-api/job-board/{token}"
@@ -16,7 +16,7 @@ URL = "https://api.ashbyhq.com/posting-api/job-board/{token}"
 def fetch(token: str, company: str, region: str = DEFAULT_REGION) -> list[RawJob]:
     # `region` is part of the shared connector signature; only sources that
     # must filter mid-fetch (see smartrecruiters) actually use it.
-    resp = httpx.get(URL.format(token=token), timeout=TIMEOUT, follow_redirects=True)
+    resp = httpx.get(URL.format(token=token), timeout=TIMEOUT, follow_redirects=True, headers=HEADERS)
     resp.raise_for_status()
 
     jobs = []
