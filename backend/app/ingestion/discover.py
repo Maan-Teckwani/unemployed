@@ -194,9 +194,33 @@ def find_via_careers_page(name: str, region: str = DEFAULT_REGION) -> dict | Non
             if page is None:
                 continue
             found = _board_in(page, region)
-            if found:
+            if found and _belongs_to(name, found["token"]):
                 return {**found, "name": name}
     return None
+
+
+def _belongs_to(name: str, token: str) -> bool:
+    """Is this board plausibly the company we went looking for?
+
+    The slug probes cannot get this wrong, because the slug is built from the
+    name. Reading a page can: a careers site may link to a board that is not
+    its own. The seed name "Remote" resolved to the Greenhouse board
+    "alphasense", because jobs.remote.com is Remote's job board product and
+    lists other companies' openings.
+
+    So the token has to carry the name, or start with it. That is true of every
+    real find so far, including the awkward ones: Razorpay's board is
+    "razorpaysoftwareprivatelimited", Meilisearch's is "meili" and Oyster HR's
+    is "oyster".
+
+    It costs the renames. Hotstar's board is "jiostar", which this rejects and
+    which is a fair price: a company filed under the wrong name is worse than a
+    company missing, and a missing one can be added with a pasted link.
+    """
+    compact = re.sub(r"[^a-z0-9]", "", name.lower())
+    whole = re.sub(r"[^a-z0-9]", "", token.lower())
+    head = re.sub(r"[^a-z0-9]", "", re.split(r"[./]", token.lower(), maxsplit=1)[0])
+    return bool(compact) and (compact in whole or (len(head) >= 4 and compact.startswith(head)))
 
 
 def _read(url: str) -> str | None:
