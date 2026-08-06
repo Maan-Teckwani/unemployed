@@ -75,13 +75,41 @@ for _region, _profile in REGIONS.items():
 REGION_IDS = tuple(REGIONS)
 
 
+def _terms_pattern(terms) -> re.Pattern[str] | None:
+    """One whole-word matcher for a region's place names.
+
+    Whole words, not substrings. The place list holds the short forms people
+    actually write, and "la" for Los Angeles matched inside "platform",
+    "class", "solar" and "Bangalore". Every one of those made a job look
+    American, and since naming another region is what disqualifies a job, the
+    damage was jobs vanishing from everyone else's list rather than wrong ones
+    appearing on a US list.
+
+    The same guard the scoring engine already uses, learned there when "NY"
+    matched inside "Kenya".
+
+    One alternation rather than a regex per term, because this runs for every
+    region on every job of every fetch. Longest first, so a listed "new york"
+    wins over a listed "york".
+    """
+    if not terms:
+        return None
+    joined = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
+    return re.compile(rf"(?<![a-z0-9])(?:{joined})(?![a-z0-9])")
+
+
+for _region, _profile in REGIONS.items():
+    _profile["term_pattern"] = _terms_pattern(_profile["terms"])
+
+
 def _mentions(text: str, region: str) -> bool:
     profile = REGIONS.get(region)
     if not profile:
         return False
-    if any(term in text for term in profile["terms"]):
+    pattern = profile.get("term_pattern")
+    if pattern is not None and pattern.search(text):
         return True
-    return any(pattern.search(text) for pattern in profile["patterns"])
+    return any(p.search(text) for p in profile["patterns"])
 
 
 def is_relevant(

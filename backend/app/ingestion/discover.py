@@ -35,11 +35,18 @@ PROBE_TIMEOUT = 10.0
 # Below this, a 200 response is an empty stub rather than a real board.
 MIN_BODY_BYTES = 400
 
+# Workday is deliberately absent. Its API lives at
+# `{sub}.{dc}.myworkdayjobs.com/wday/cxs/{tenant}/{site}`, and the data centre
+# and site name cannot be derived from a company name, so probing for one means
+# a cross product of guesses against someone else's servers for every company
+# that does not have one. Workday boards are added by token instead; see
+# app/connectors/workday.py for the format.
 PROBES = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
     "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
     "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100",
+    "recruitee": "https://{slug}.recruitee.com/api/offers/",
 }
 
 
@@ -77,6 +84,8 @@ def probe(platform: str, slug: str) -> list[dict] | None:
         return data if isinstance(data, list) else None
     if platform == "ashby":
         return data.get("jobs")
+    if platform == "recruitee":
+        return data.get("offers")
     return data.get("content")
 
 
@@ -96,6 +105,11 @@ def matched_job_count(platform: str, entries: list[dict], region: str) -> int:
             remote, title = (e.get("workplaceType") or "").lower() == "remote", e.get("text", "")
         elif platform == "ashby":
             location, remote, title = e.get("location") or "", bool(e.get("isRemote")), e.get("title", "")
+        elif platform == "recruitee":
+            location = e.get("location") or ", ".join(
+                p for p in (e.get("city"), e.get("country_code")) if p
+            )
+            remote, title = bool(e.get("remote")), e.get("title", "")
         else:
             loc = e.get("location") or {}
             location, remote, title = loc.get("fullLocation") or "", bool(loc.get("remote")), e.get("name", "")
