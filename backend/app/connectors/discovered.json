@@ -733,5 +733,75 @@
     "name": "Thomson Reuters",
     "total_jobs": 55,
     "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "citi.wd5/citi/2",
+    "name": "Citi",
+    "total_jobs": 20,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "shell.wd3/shell/shellcareers",
+    "name": "Shell",
+    "total_jobs": 20,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "genpact.wd108/genpact/External_Careers",
+    "name": "Genpact",
+    "total_jobs": 20,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "nike.wd1/nike/nke",
+    "name": "Nike",
+    "total_jobs": 20,
+    "india_jobs": 19
+  },
+  {
+    "source": "workday",
+    "token": "unilever.wd3/unilever/Unilever_Experienced_Professionals",
+    "name": "Unilever",
+    "total_jobs": 19,
+    "india_jobs": 15
+  },
+  {
+    "source": "workday",
+    "token": "stryker.wd1/stryker/StrykerCareers",
+    "name": "Stryker",
+    "total_jobs": 20,
+    "india_jobs": 15
+  },
+  {
+    "source": "workday",
+    "token": "dxctechnology.wd1/dxctechnology/DXCJobs",
+    "name": "DXC Technology",
+    "total_jobs": 20,
+    "india_jobs": 14
+  },
+  {
+    "source": "workday",
+    "token": "kyndryl.wd5/kyndryl/KyndrylEarlyCareers",
+    "name": "Kyndryl",
+    "total_jobs": 11,
+    "india_jobs": 10
+  },
+  {
+    "source": "workday",
+    "token": "target.wd5/target/targetcareers",
+    "name": "Target",
+    "total_jobs": 20,
+    "india_jobs": 5
+  },
+  {
+    "source": "workday",
+    "token": "fis.wd5/fis/SearchJobs",
+    "name": "FIS",
+    "total_jobs": 6,
+    "india_jobs": 3
   }
 ]
