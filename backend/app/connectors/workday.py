@@ -92,6 +92,96 @@ def fetch(token: str, company: str, region: str = DEFAULT_REGION) -> list[RawJob
     return jobs
 
 
+_URL_RE = re.compile(
+    r"https?://(?P<host>[\w-]+\.wd\d+)\.myworkdayjobs\.com/(?P<path>[^?#]*)", re.I
+)
+# The careers page declares its own API config in an inline script:
+#   window.workday = { tenant: "nvidia", siteId: "NVIDIAExternalCareerSite", ... }
+# Which is the only reliable source for the tenant, because it is not in the
+# public URL and is not always the subdomain: Wells Fargo is `wf`.
+_DECLARED = re.compile(
+    r"""tenant:\s*["'](?P<tenant>[\w.-]+)["'].*?siteId:\s*["'](?P<site>[\w.-]+)["']""",
+    re.S,
+)
+# Workday serves the SPA shell to browsers and 406s anything that does not look
+# like one, so reading that page needs a browser's Accept header.
+_PAGE_HEADERS = {**HEADERS, "Accept": "text/html,application/xhtml+xml"}
+
+
+def resolve(url: str, region: str = DEFAULT_REGION) -> dict | None:
+    """Turn a careers link into a verified board token, or None.
+
+    This exists because Workday boards cannot be discovered the way the other
+    platforms can. Their API path ends in a site slug chosen per tenant and
+    derived from nothing: "External", "External_Careers", "search",
+    "Jobsathpe" and "CorporateCareers" are all real. Guessing it found six
+    companies in fifty nine, and every extra guess is another request against
+    someone else's server.
+
+    A person reads the slug off the careers URL in one look, so they paste that
+    instead. The tenant is the part the URL does not carry, and the page
+    declares it. Where the page will not serve (Wells Fargo answers 500), the
+    subdomain is tried as the tenant, which is right for twelve of the thirteen
+    boards seeded so far.
+
+    Nothing is returned unless the board answers and has jobs for this region,
+    the same collision guard the rest of discovery applies.
+    """
+    match = _URL_RE.match(url.strip())
+    if not match:
+        return None
+
+    host = match["host"].lower()
+    segments = [s for s in match["path"].split("/") if s]
+    # Trim a language prefix and anything after the site, so a link copied from
+    # a job posting works as well as one copied from the board itself.
+    if segments and re.fullmatch(r"[a-z]{2}(-[A-Za-z]{2})?", segments[0]):
+        segments.pop(0)
+    site_from_url = segments[0] if segments else ""
+
+    declared = _declared_config(f"https://{host}.myworkdayjobs.com/{site_from_url}")
+    candidates = []
+    if declared:
+        candidates.append(declared)
+    if site_from_url:
+        candidates.append((host.split(".")[0], site_from_url))
+
+    for tenant, site in dict.fromkeys(candidates):
+        token = f"{host}/{tenant}/{site}"
+        counted = _count_matching(token, region)
+        if counted is not None and counted["matched_jobs"] > 0:
+            return {"source": "workday", "token": token, **counted}
+    return None
+
+
+def _declared_config(page_url: str) -> tuple[str, str] | None:
+    try:
+        resp = httpx.get(
+            page_url, timeout=TIMEOUT, follow_redirects=True, headers=_PAGE_HEADERS
+        )
+        if resp.status_code != 200:
+            return None
+        found = _DECLARED.search(resp.text)
+    except Exception:  # noqa: BLE001 - an unreadable page just means we guess
+        return None
+    return (found["tenant"], found["site"]) if found else None
+
+
+def _count_matching(token: str, region: str) -> dict | None:
+    """Ask the board for one page and count what this region could apply to."""
+    try:
+        postings = _list_postings(_base_url(token), region)[:PAGE_SIZE]
+    except Exception:  # noqa: BLE001 - not a board, or not this token
+        return None
+    matched = sum(
+        1
+        for p in postings
+        if is_relevant(_location_from_path(p.get("externalPath") or ""), False,
+                       p.get("title", ""), region)
+    )
+    return {"total_jobs": len(postings), "matched_jobs": matched}
+
+
 def _base_url(token: str) -> str:
     match = _TOKEN_RE.match(token.strip())
     if not match:

@@ -201,6 +201,119 @@ def _empty():
     return R()
 
 
+# --- Resolving a pasted Workday careers link ---------------------------------
+#
+# Workday cannot be probed by name: its API path ends in a site slug chosen per
+# tenant and derived from nothing, so a ten name wordlist found six companies in
+# fifty nine. The slug is in the careers URL. The tenant is not, and is not
+# always the subdomain, so the page's own inline config supplies it.
+
+PAGE = """
+<html><script>
+  window.workday = window.workday || {
+      tenant: "wf",
+      siteId: "WellsFargoJobs",
+      environment: "PROD"
+  };
+</script></html>
+"""
+
+
+@pytest.fixture()
+def board(monkeypatch):
+    """A live board plus its careers page, and a record of what was asked."""
+    asked = {"pages": [], "jobs": []}
+
+    class Resp:
+        def __init__(self, payload=None, text="", status=200):
+            self._p, self.text, self.status_code = payload, text, status
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._p
+
+    state = {"page": PAGE, "page_status": 200, "accepts": ("wellsfargo.wd1/wf/WellsFargoJobs",)}
+
+    def get(url, **kw):
+        asked["pages"].append(url)
+        return Resp(text=state["page"], status=state["page_status"])
+
+    def post(url, json=None, **kw):
+        asked["jobs"].append(url)
+        if not any(f"/wday/cxs/{t.split('/', 1)[1]}/jobs" == url.split(".com")[1] for t in state["accepts"]):
+            raise httpx.HTTPStatusError("404", request=None, response=None)
+        return Resp(payload=WORKDAY_LIST)
+
+    monkeypatch.setattr(workday.httpx, "get", get)
+    monkeypatch.setattr(workday.httpx, "post", post)
+    return state, asked
+
+
+def test_a_pasted_link_becomes_a_verified_token(board) -> None:
+    """The subdomain is "wellsfargo" and the tenant is "wf". Guessing the
+    subdomain would fail here, which is why the page is read."""
+    found = workday.resolve(
+        "https://wellsfargo.wd1.myworkdayjobs.com/en-US/WellsFargoJobs", "india"
+    )
+    assert found["source"] == "workday"
+    assert found["token"] == "wellsfargo.wd1/wf/WellsFargoJobs"
+    assert found["matched_jobs"] == 1
+
+
+def test_a_language_prefix_is_not_the_site(board) -> None:
+    """Every Workday link people copy has /en-US/ in it."""
+    plain = workday.resolve("https://wellsfargo.wd1.myworkdayjobs.com/WellsFargoJobs", "india")
+    prefixed = workday.resolve(
+        "https://wellsfargo.wd1.myworkdayjobs.com/en-US/WellsFargoJobs", "india"
+    )
+    assert plain["token"] == prefixed["token"]
+
+
+def test_a_link_to_one_job_resolves_the_whole_board(board) -> None:
+    """People copy the address of the posting they are looking at."""
+    found = workday.resolve(
+        "https://wellsfargo.wd1.myworkdayjobs.com/en-US/WellsFargoJobs"
+        "/job/India-Bengaluru/Engineer_JR1?source=linkedin",
+        "india",
+    )
+    assert found["token"] == "wellsfargo.wd1/wf/WellsFargoJobs"
+
+
+def test_an_unreadable_page_falls_back_to_the_subdomain(board) -> None:
+    """Some boards answer 500 to anything that is not a browser. The subdomain
+    is the right tenant for twelve of the thirteen boards seeded so far."""
+    state, _ = board
+    state["page_status"] = 500
+    state["accepts"] = ("nvidia.wd5/nvidia/NVIDIAExternalCareerSite",)
+    found = workday.resolve(
+        "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite", "india"
+    )
+    assert found["token"] == "nvidia.wd5/nvidia/NVIDIAExternalCareerSite"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://boards.greenhouse.io/stripe",
+        "https://careers.walmart.com/",
+        "not a url at all",
+        "https://myworkdayjobs.com/CareerSite",  # no subdomain or data centre
+    ],
+)
+def test_a_link_that_is_not_a_workday_board_is_refused(board, url: str) -> None:
+    assert workday.resolve(url, "india") is None
+
+
+def test_a_board_with_nothing_for_this_region_is_not_a_match(board) -> None:
+    """The same collision guard the rest of discovery applies: a board that
+    resolves but has no roles you could apply to is not worth tracking."""
+    assert workday.resolve(
+        "https://wellsfargo.wd1.myworkdayjobs.com/WellsFargoJobs", "uk"
+    ) is None
+
+
 # --- Recruitee ---------------------------------------------------------------
 
 RECRUITEE = {
