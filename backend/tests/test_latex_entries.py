@@ -156,6 +156,48 @@ def test_headings_that_differ_between_holes_are_declined() -> None:
     assert find_entries(body) is None
 
 
+# A real template, and the reason the entry parser grew two of its rules. Each
+# entry is closed by \vspace{1pt}, and each carries a link.
+SPACED = r"""
+\entry{Alfred -- Autonomous Copilot}{}
+\subentry{Python, FastAPI}{\href{https://alfred.example.com/}{alfred.example.com}}
+\begin{bullets}
+    \item Architected an event-driven platform converting tickets to pull requests.
+    \item Designed a closed-loop self-correction system that runs tests.
+\end{bullets}
+\vspace{1pt}
+
+\entry{PosturePal -- Desktop Application}{}
+\subentry{Electron.js, Next.js}{\href{https://www.posturepal.in/}{posturepal.in}}
+\begin{bullets}
+    \item Architected a production desktop app decoupling the UI from inference.
+    \item Engineered a billing subsystem with device registration.
+\end{bullets}
+\vspace{1pt}
+"""
+
+
+def test_a_spacing_length_is_not_a_project_name() -> None:
+    r"""`\vspace{1pt}` closes each entry, so it lands in the next entry's
+    heading span. Read as a writable hole it gives the first entry one fewer
+    hole than the rest, and the section is declined for disagreeing with
+    itself."""
+    entries = find_entries(SPACED)
+    assert entries is not None
+    assert [len(e.lead) for e in entries] == [5, 5]
+    assert "1pt" not in [SPACED[h.start : h.end] for e in entries for h in e.lead]
+
+
+def test_hole_role_names_what_cannot_be_written() -> None:
+    """A blank the author left blank can stay blank. A link cannot be filled at
+    all, because the knowledge base has nowhere to keep one, and printing one
+    project's name above another project's link is the failure that compiles."""
+    assert hole_role(["", "", ""]) == "empty"
+    assert hole_role(["https://alfred.example.com/", "https://www.posturepal.in/"]) == "link"
+    assert hole_role(["alfred.example.com", "posturepal.in"]) == "link"
+    assert hole_role(["Python, FastAPI", "Electron.js, Next.js"]) == "text"
+
+
 def test_hole_role_reads_a_date_column() -> None:
     assert hole_role(["May 2024 -- Aug 2024", "May 2023 -- Jul 2023"]) == "date"
     assert hole_role(["Acme", "Globex"]) == "text"

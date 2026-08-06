@@ -207,6 +207,12 @@ export type LatexSection = {
   /** Whether the model picked the projects, or the relevance ranking did. */
   chosen_by?: "model" | "ranking";
   entries?: LatexEntry[];
+  /**
+   * Why this section's entries could not be chosen from the knowledge base,
+   * when they could not. Set independently of `reason`, which is about the
+   * rewrite that ran instead.
+   */
+  entries_declined?: string;
 };
 
 export type Resume = {

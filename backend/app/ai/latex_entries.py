@@ -38,12 +38,22 @@ from typing import NamedTuple
 _COMMAND = re.compile(r"\\[a-zA-Z]+")
 _ITEM = re.compile(r"\\item\b")
 _ENV = re.compile(r"\\(?:begin|end)\s*\{")
+# A TeX length. Templates close each entry with `\vspace{1pt}`, which lands in
+# the next entry's heading span, and `1pt` holds no command so it looks exactly
+# like a writable name. Left alone, the first entry has one fewer hole than the
+# rest and the whole section is declined for disagreeing with itself.
+_DIMENSION = re.compile(r"^-?\d*\.?\d+\s*(?:pt|em|ex|in|cm|mm|px|bp|sp|mu|dd|pc)$", re.I)
 # A year, a month, or the word every resume uses for "still there". Enough to
 # tell a date hole from a name hole, and nothing more is needed.
 _DATE = re.compile(
     r"\b(?:19|20)\d{2}\b|\bpresent\b|\bcurrent\b|"
     r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
     re.IGNORECASE,
+)
+# A URL or a bare domain. Templates that show a link per project put one of
+# these in a hole, and the knowledge base has nowhere to keep one.
+_LINK = re.compile(
+    r"https?://|\bwww\.|\b[a-z0-9-]+\.(?:com|io|dev|app|ai|org|net|co|in|me|sh)\b", re.I
 )
 
 # Characters TeX reads as syntax, and the escape that makes each one literal.
@@ -153,13 +163,44 @@ def find_entries(body: str) -> list[Entry] | None:
     return entries
 
 
+def find_sentences(body: str) -> list[Hole]:
+    r"""Every bullet in this section whose text is prose we can safely replace.
+
+    Used when the section is not repeating entries and so cannot be refilled
+    from the knowledge base, but its sentences can still be reworded. Sending
+    the model these spans instead of the whole section is the difference
+    between it writing two hundred words and two thousand, and between the
+    LaTeX around them being guaranteed and being hoped for.
+
+    A bullet holding a command is left out. Replacing `\textbf{Languages:}
+    Python, Java` with a sentence would drop the `\textbf` and change the
+    command sequence, so those spans are not ours to write.
+    """
+    return [
+        Hole(b.start, b.end)
+        for b in _find_bullets(body)
+        if not _COMMAND.search(body, b.start, b.end)
+    ]
+
+
 def hole_role(values: list[str]) -> str:
     """What one hole position holds, judged from what the template put there.
 
     Voting across the entries rather than trusting one, because a single
     project subtitle reading "2026 Product Work" would otherwise turn the whole
     position into a date column.
+
+    "empty" and "link" are both about what can be written back. A position the
+    author left blank in every entry holds no fact and can stay blank. A
+    position holding a link holds a fact with nowhere to get it from, since the
+    knowledge base stores no URLs, and that is the difference between declining
+    a section and printing one project's name above another project's link.
     """
+    if all(not v.strip() for v in values):
+        return "empty"
+    links = sum(1 for v in values if _LINK.search(v))
+    if links * 2 > len(values):
+        return "link"
     dates = sum(1 for v in values if _DATE.search(v))
     return "date" if dates * 2 > len(values) else "text"
 
@@ -271,6 +312,9 @@ def _lead_holes(body: str, start: int, end: int) -> tuple[Hole, ...] | None:
         # document that does not compile.
         if _ENV.search(body, max(start, group_start - 12), group_start + 1):
             continue
+        # `\vspace{1pt}`. A length is spacing, not a fact about anyone.
+        if _DIMENSION.match(body[content_start:content_end]):
+            continue
         if _COMMAND.search(body, content_start, content_end):
             nested = _lead_holes(body, content_start, content_end)
             if nested is None:
@@ -324,7 +368,10 @@ def _has_words(text: str) -> bool:
     structure. "Senior" is a fact about a person, and a fact sitting outside
     every hole is one this module cannot replace.
     """
-    bare = _ENV.sub("", re.sub(r"\\(?:begin|end)\s*\{[^}]*\}", "", text))
+    bare = re.sub(r"\\(?:begin|end)\s*\{[^}]*\}", "", text)
+    # `{1pt}` says nothing about a person, and the "pt" would otherwise read as
+    # a word and decline every template that closes an entry with \vspace.
+    bare = re.sub(r"\{([^{}]*)\}", lambda m: "" if _DIMENSION.match(m.group(1)) else m.group(0), bare)
     bare = _COMMAND.sub("", bare)
     return bool(re.search(r"[A-Za-z]", bare))
 
