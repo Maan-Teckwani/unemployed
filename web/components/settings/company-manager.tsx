@@ -10,16 +10,27 @@ import { Input } from "@/components/ui/input";
 /**
  * Add any company with a public job board.
  *
- * Typing a name probes Greenhouse, Lever, Ashby and SmartRecruiters live and
- * reports which one hosts it — so coverage isn't limited to the shipped seed
- * list. A board only counts if it actually has jobs for your region: slugs
- * collide across vendors, and a same-named company elsewhere is not a match.
+ * Typing a name probes Greenhouse, Lever, Ashby, SmartRecruiters and Recruitee
+ * live and reports which one hosts it — so coverage isn't limited to the
+ * shipped seed list. A board only counts if it actually has jobs for your
+ * region: slugs collide across vendors, and a same-named company elsewhere is
+ * not a match.
+ *
+ * The same box takes a Workday careers link, because Workday cannot be probed
+ * by name. Its API path ends in a site slug picked per company and derived
+ * from nothing, so guessing it found six companies in fifty nine. That slug is
+ * in the URL, which a person reads in one look.
  */
 export function CompanyManager() {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<CompanySearchResult | null>(null);
   const [searching, setSearching] = useState(false);
+  // A pasted link only tells us the subdomain, so Morgan Stanley resolves as
+  // "Ms" and HPE as "Hpe". The careers pages declare no usable name either,
+  // and this one is worth getting right: it is what the companies list shows
+  // and what every job from this board is filed under.
+  const [name, setName] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -33,12 +44,16 @@ export function CompanyManager() {
     load();
   }, [load]);
 
+  const looksLikeLink = /^https?:\/\//i.test(query.trim());
+
   async function search() {
-    if (query.trim().length < 2) return toast.error("Enter a company name");
+    if (query.trim().length < 2) return toast.error("Enter a company name or a link");
     setSearching(true);
     setResult(null);
     try {
-      setResult(await api.searchCompany(query.trim()));
+      const found = await api.searchCompany(query.trim());
+      setResult(found);
+      setName(found.name);
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -48,16 +63,18 @@ export function CompanyManager() {
 
   async function add() {
     if (!result?.found) return;
+    const label = name.trim() || result.name;
     try {
       await api.addCompany({
         source: result.source!,
         token: result.token!,
-        name: result.name,
+        name: label,
         matched_jobs: result.matched_jobs ?? 0,
       });
-      toast.success(`Added ${result.name} — run a fetch to pull its jobs`);
+      toast.success(`Added ${label} — run a fetch to pull its jobs`);
       setResult(null);
       setQuery("");
+      setName("");
       load();
     } catch (e) {
       toast.error(String(e));
@@ -80,8 +97,9 @@ export function CompanyManager() {
       <div>
         <h2 className="font-medium">Companies</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          {companies.length} tracked. Search for any company — if it has a public
-          board on Greenhouse, Lever, Ashby or SmartRecruiters, you can add it.
+          {companies.length} tracked. Search by name for Greenhouse, Lever, Ashby,
+          SmartRecruiters and Recruitee. For a Workday company, paste its careers
+          link instead.
         </p>
       </div>
 
@@ -90,18 +108,42 @@ export function CompanyManager() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && search()}
-          placeholder="e.g. Razorpay, Stripe, Zomato…"
+          placeholder="Razorpay, Stripe, or a workday careers link…"
         />
         <Button onClick={search} disabled={searching}>
-          {searching ? "Searching…" : "Search"}
+          {searching ? (looksLikeLink ? "Reading…" : "Searching…") : "Search"}
         </Button>
       </div>
+
+      {/* Shown while typing a link rather than after failing with one: most
+          people paste the company's own careers domain, which is a redirect
+          and carries none of the parts the API path needs. */}
+      {looksLikeLink && !query.includes("myworkdayjobs.com") && (
+        <p className="text-xs text-muted-foreground">
+          Workday links look like{" "}
+          <code className="bg-muted rounded px-1">
+            company.wd5.myworkdayjobs.com/CareerSite
+          </code>
+          . If the company&rsquo;s careers page redirects somewhere else, open a job
+          on it and copy the address from there.
+        </p>
+      )}
 
       {result && (
         <div className="rounded-md border p-3 text-sm">
           {result.found ? (
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-medium">{result.name}</span>
+              {result.already_tracked ? (
+                <span className="font-medium">{result.name}</span>
+              ) : (
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && add()}
+                  aria-label="Company name"
+                  className="h-8 w-48"
+                />
+              )}
               <Badge variant="secondary">{result.source}</Badge>
               <span className="text-muted-foreground text-xs">
                 {result.matched_jobs} matching job

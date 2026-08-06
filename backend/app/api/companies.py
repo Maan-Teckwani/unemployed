@@ -1,13 +1,20 @@
 """Manage which companies' job boards are read.
 
 Search is live: a name is turned into candidate board slugs and probed against
-all four ATS platforms, so any company with a public board can be added — the
-seed list is a starting point, not a limit.
+every ATS platform that can be probed, so any company with a public board can
+be added — the seed list is a starting point, not a limit.
+
+Workday is the exception, and it takes a link instead of a name. Its API path
+ends in a site slug chosen per tenant and derived from nothing, so guessing it
+found six companies in fifty nine and cost a request per guess against someone
+else's server. The slug is right there in the careers URL, which a person reads
+in one look, so the same box accepts one.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.connectors import workday
 from app.connectors.registry import CONNECTORS
 from app.db.models import Company, Job, Preferences
 from app.db.session import get_db
@@ -45,16 +52,30 @@ def list_companies(db: Session = Depends(get_db)) -> list[dict]:
 
 @router.get("/search")
 def search(name: str, db: Session = Depends(get_db)) -> dict:
-    """Look for a company's public job board across all supported platforms."""
-    if len(name.strip()) < 2:
+    """Find a company's public job board, by name or by pasted careers link."""
+    query = name.strip()
+    if len(query) < 2:
         raise HTTPException(status_code=422, detail="enter at least 2 characters")
 
     preferences = db.scalar(select(Preferences))
     region = getattr(preferences, "region", None) or DEFAULT_REGION
 
-    found = find_company(name.strip(), region)
+    if _is_link(query):
+        found = workday.resolve(query, region)
+        if found is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "That link is not a Workday careers page this can read. It should "
+                    "look like https://company.wd5.myworkdayjobs.com/CareerSite. For "
+                    "other boards, search by company name instead."
+                ),
+            )
+        found = {**found, "name": _name_from_token(found["token"], query)}
+    else:
+        found = find_company(query, region)
     if found is None:
-        return {"found": False, "name": name.strip()}
+        return {"found": False, "name": query}
 
     already = db.scalar(
         select(Company).where(
@@ -62,6 +83,20 @@ def search(name: str, db: Session = Depends(get_db)) -> dict:
         )
     )
     return {"found": True, **found, "already_tracked": already is not None}
+
+
+def _is_link(query: str) -> bool:
+    return query.lower().startswith(("http://", "https://"))
+
+
+def _name_from_token(token: str, url: str) -> str:
+    """A readable company name from the board's own subdomain.
+
+    "nvidia.wd5/nvidia/NVIDIAExternalCareerSite" -> "Nvidia". Better than the
+    raw token in the companies list, and the user can see what it resolved to
+    before adding it.
+    """
+    return token.split(".")[0].replace("-", " ").title() or url
 
 
 @router.post("", status_code=201)
