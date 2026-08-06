@@ -45,6 +45,31 @@ class Settings(BaseSettings):
     # OLLAMA_MODEL=llama3.1:8b (larger download, slower on CPU).
     ollama_model: str = "llama3.2:3b"
 
+    # Optional: send the LLM work to a hosted model instead of the local one.
+    #
+    # Everything here is empty by default and the app is complete without it.
+    # It exists because a 3b model on a laptop CPU writes about thirteen tokens
+    # a second, which is thirty seconds to read one job description and a
+    # minute and a half to tailor a resume. The same work against a hosted
+    # model is about a second. Nothing else changes: same prompts, same
+    # validation, same refusal to print anything the knowledge base cannot back.
+    #
+    # One OpenAI-compatible code path rather than an adapter per vendor, because
+    # Groq, Gemini, OpenRouter and OpenAI all speak it and writing four of them
+    # would be four times the code and four times the things that can be wrong.
+    #
+    #   LLM_BASE_URL=https://api.groq.com/openai/v1
+    #   LLM_API_KEY=...
+    #   LLM_MODEL=llama-3.3-70b-versatile
+    #
+    # The key is read from the local .env and sent to that provider and nowhere
+    # else. Setting it does mean job descriptions and knowledge base text leave
+    # the machine, which is the whole of what the local default protects, so it
+    # is opt-in and stays that way.
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+
     # ONE embedding model for everything that gets compared (KB + jobs).
     # EMBEDDING_DIM must match the model's output size.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
