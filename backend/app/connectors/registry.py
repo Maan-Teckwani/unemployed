@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.connectors import ashby, greenhouse, lever, smartrecruiters
+from app.connectors import ashby, greenhouse, lever, recruitee, smartrecruiters, workday
 from app.db.models import Company as CompanyRow
 
 DISCOVERED_PATH = Path(__file__).resolve().parent / "discovered.json"
@@ -23,6 +23,8 @@ CONNECTORS = {
     "lever": lever.fetch,
     "ashby": ashby.fetch,
     "smartrecruiters": smartrecruiters.fetch,
+    "workday": workday.fetch,
+    "recruitee": recruitee.fetch,
 }
 
 

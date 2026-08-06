@@ -642,5 +642,54 @@
     "name": "Whatfix",
     "total_jobs": 1,
     "india_jobs": 1
+  },
+  {
+    "source": "workday",
+    "token": "nvidia.wd5/nvidia/NVIDIAExternalCareerSite",
+    "name": "NVIDIA",
+    "total_jobs": 216,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "adobe.wd5/adobe/external_experienced",
+    "name": "Adobe",
+    "total_jobs": 148,
+    "india_jobs": 16
+  },
+  {
+    "source": "workday",
+    "token": "hpe.wd5/hpe/Jobsathpe",
+    "name": "Hewlett Packard Enterprise",
+    "total_jobs": 351,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "mastercard.wd1/mastercard/CorporateCareers",
+    "name": "Mastercard",
+    "total_jobs": 244,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "wellsfargo.wd1/wf/WellsFargoJobs",
+    "name": "Wells Fargo",
+    "total_jobs": 215,
+    "india_jobs": 13
+  },
+  {
+    "source": "workday",
+    "token": "workday.wd5/workday/Workday",
+    "name": "Workday",
+    "total_jobs": 22,
+    "india_jobs": 4
+  },
+  {
+    "source": "workday",
+    "token": "paypal.wd1/paypal/jobs",
+    "name": "PayPal",
+    "total_jobs": 4,
+    "india_jobs": 3
   }
 ]

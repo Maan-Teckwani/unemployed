@@ -88,3 +88,39 @@ def test_remote_is_relevant_everywhere_when_no_region_is_named() -> None:
 def test_unknown_non_remote_location_is_rejected() -> None:
     """If we cannot tell where a desk job is, it is not worth showing."""
     assert is_relevant("Springfield", False, "Software Engineer", "india") is False
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Senior System Software Engineer, CPU Platform",  # "la" inside "platform"
+        "Java Class Library Maintainer",  # inside "class"
+        "Solar Analytics Engineer",  # inside "solar"
+        "Flagship Product Engineer",  # inside "flag"
+    ],
+)
+def test_a_place_name_must_be_a_whole_word(title: str) -> None:
+    """"la" is a real short form for Los Angeles and a real substring of
+    "platform", "class", "solar" and "flag".
+
+    The damage was not wrong jobs on a US list. Naming another region is what
+    disqualifies a job, so every posting whose title happened to contain those
+    letters vanished from every other region's list. Measured on a real
+    database, twelve India jobs were being dropped this way and a hundred and
+    twenty six foreign jobs were being counted as American.
+    """
+    assert is_relevant("Taiwan, Taipei", False, title, "us") is False
+    assert is_relevant("Bengaluru, India", False, title, "india") is True
+
+
+def test_bangalore_is_not_los_angeles() -> None:
+    """The substring is right there in the middle of the word."""
+    assert is_relevant("Bangalore", False, "Backend Engineer", "us") is False
+    assert is_relevant("Bangalore", False, "Backend Engineer", "india") is True
+
+
+def test_short_forms_still_match_when_they_are_the_whole_word() -> None:
+    """The fix must not cost the abbreviations people actually write."""
+    assert is_relevant("LA, California", False, "Engineer", "us") is True
+    assert is_relevant("BLR", False, "Engineer", "india") is True
+    assert is_relevant("Remote - NCR", False, "Engineer", "india") is True
