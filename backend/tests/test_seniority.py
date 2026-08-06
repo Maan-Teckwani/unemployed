@@ -39,3 +39,28 @@ from app.ingestion.seniority import is_fresher_friendly
 )
 def test_is_fresher_friendly(title: str, expected: bool) -> None:
     assert is_fresher_friendly(title) is expected
+
+
+@pytest.mark.parametrize(
+    ("title", "friendly"),
+    [
+        # Not a staff-level rank: it is the ordinary IC title at Pure Storage,
+        # VMware, Nutanix and Oracle, and new grads are hired into it. Read
+        # literally it contains "staff", and every one of these was dropped as
+        # unambiguously senior.
+        ("Member of Technical Staff", True),
+        ("Member of Technical Staff, Networking", True),
+        ("Member Of Technical Staff - Golang / Java", True),
+        ("MTS - Software Development", True),
+        # The phrase is removed rather than exempted, so the rest of the title
+        # still decides.
+        ("Member of Technical Staff, Senior Backend", False),
+        ("MTS - Kernel / Storage Systems Architect", False),
+        ("Member of Technical Staff, Production Engineering Lead", False),
+        # And a real staff-level rank is still a real staff-level rank.
+        ("Staff Software Engineer", False),
+        ("Senior Staff Engineer", False),
+    ],
+)
+def test_member_of_technical_staff_is_not_a_staff_rank(title, friendly) -> None:
+    assert is_fresher_friendly(title) is friendly
