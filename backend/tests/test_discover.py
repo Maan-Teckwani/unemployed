@@ -138,3 +138,43 @@ def test_progress_is_reported_as_answers_come_back(monkeypatch) -> None:
     seen = []
     discover.discover(["A", "B", "C"], "india", on_progress=lambda d, t, m: seen.append((d, t)))
     assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
+@pytest.mark.parametrize(
+    ("name", "token", "belongs"),
+    [
+        # Real finds, including the awkward ones.
+        ("Razorpay", "razorpaysoftwareprivatelimited", True),
+        ("Meilisearch", "meili", True),
+        ("Oyster HR", "oyster", True),
+        ("Fractal Analytics", "fractal.wd1/fractal/Careers", True),
+        ("BrowserStack", "browserstack.wd3/browserstack/External", True),
+        ("Paytm", "paytm", True),
+        # The one that made this necessary: jobs.remote.com is Remote's job
+        # board product and lists other companies' openings, so the seed name
+        # "Remote" came back as the Greenhouse board "alphasense".
+        ("Remote", "alphasense", False),
+        # The price of the rule. Hotstar's board is "jiostar" after the rename,
+        # and a company filed under the wrong name is worse than one missing.
+        ("Hotstar", "jiostar.wd102/jiostar/JioStar", False),
+    ],
+)
+def test_a_page_may_link_to_someone_else_s_board(name, token, belongs) -> None:
+    assert discover._belongs_to(name, token) is belongs
+
+
+def test_the_guard_is_only_on_the_page_route(monkeypatch) -> None:
+    """The slug probes build the slug from the name, so they cannot pick up a
+    board belonging to a different company and do not pay for this check."""
+    monkeypatch.setattr(discover, "probe", lambda p, s: [{"id": 1}])
+    monkeypatch.setattr(discover, "matched_job_count", lambda p, e, r: 1)
+    assert discover.find_company("Atlan", "india")["token"] == "atlan"
+
+
+def test_a_board_belonging_to_someone_else_is_not_returned(monkeypatch) -> None:
+    monkeypatch.setattr(
+        discover, "_read", lambda url: 'x <a href="https://boards.greenhouse.io/alphasense">j</a>'
+    )
+    monkeypatch.setattr(discover, "probe", lambda p, s: [{"id": 1}])
+    monkeypatch.setattr(discover, "matched_job_count", lambda p, e, r: 9)
+    assert discover.find_via_careers_page("Remote", "india") is None

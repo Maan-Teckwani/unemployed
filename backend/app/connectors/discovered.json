@@ -803,5 +803,75 @@
     "name": "FIS",
     "total_jobs": 6,
     "india_jobs": 3
+  },
+  {
+    "source": "greenhouse",
+    "token": "razorpaysoftwareprivatelimited",
+    "name": "Razorpay",
+    "total_jobs": 24,
+    "india_jobs": 17
+  },
+  {
+    "source": "workday",
+    "token": "intel.wd1/intel/External",
+    "name": "Intel",
+    "total_jobs": 20,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "accenture.wd103/accenture/AccentureCareers",
+    "name": "Accenture",
+    "total_jobs": 20,
+    "india_jobs": 19
+  },
+  {
+    "source": "workday",
+    "token": "sprinklr.wd1/sprinklr/careers",
+    "name": "Sprinklr",
+    "total_jobs": 20,
+    "india_jobs": 20
+  },
+  {
+    "source": "workday",
+    "token": "browserstack.wd3/browserstack/External",
+    "name": "BrowserStack",
+    "total_jobs": 20,
+    "india_jobs": 18
+  },
+  {
+    "source": "workday",
+    "token": "fractal.wd1/fractal/Careers",
+    "name": "Fractal Analytics",
+    "total_jobs": 20,
+    "india_jobs": 11
+  },
+  {
+    "source": "workday",
+    "token": "crowdstrike.wd5/crowdstrike/crowdstrikecareers",
+    "name": "CrowdStrike",
+    "total_jobs": 11,
+    "india_jobs": 5
+  },
+  {
+    "source": "workday",
+    "token": "jiostar.wd102/jiostar/JioStar",
+    "name": "JioStar (Hotstar)",
+    "total_jobs": 20,
+    "india_jobs": 17
+  },
+  {
+    "source": "lever",
+    "token": "meili",
+    "name": "Meilisearch",
+    "total_jobs": 1,
+    "india_jobs": 1
+  },
+  {
+    "source": "ashby",
+    "token": "oyster",
+    "name": "Oyster HR",
+    "total_jobs": 20,
+    "india_jobs": 2
   }
 ]
