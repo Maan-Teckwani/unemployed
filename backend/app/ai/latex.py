@@ -18,13 +18,14 @@ and it does not compile, and the user finds out in Overleaf rather than here.
   slightly less tailored beats one that will not compile.
 """
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 from app.ai import latex_entries
 from app.ai.generate_resume import _invented_numbers, _numbers
 from app.ai.kb_groups import Group, describe, group_chunks
 from app.ai.latex_entries import Entry, find_entries
-from app.ai.llm import fits_context, generate_json, generate_text
+from app.ai.llm import fits_context, generate_json
 from app.db.models import KBChunk
 
 # Headings vary by template, so match them loosely. Order matters: the first
@@ -87,90 +88,96 @@ def find_sections(latex: str) -> list[Section]:
 def tailor(latex: str, chunks: list[KBChunk], requirements: dict) -> tuple[str, list[dict]]:
     """Rewrite what we may, keep what we must. Returns (document, per-section report).
 
-    Splicing runs back-to-front so earlier spans keep their indices.
+    Sections are worked on at the same time and spliced afterwards, back to
+    front so earlier spans keep their indices. They are independent by
+    construction: each one reads a span of the original and writes a
+    replacement for that span, and nothing crosses between them. Doing them one
+    after another meant the user waited for the sum of four model calls to get
+    an answer that was ready in the time of the slowest.
     """
-    sections = find_sections(latex)
-    report: list[dict] = []
+    sections = [s for s in find_sections(latex) if s.name in REWRITABLE]
+    if not sections:
+        return latex, []
+
+    with ThreadPoolExecutor(max_workers=len(sections)) as pool:
+        done = list(pool.map(lambda s: _tailor_section(latex, s, chunks, requirements), sections))
+
     out = latex
-
-    for section in reversed(sections):
-        if section.name not in REWRITABLE:
-            continue
-        original = latex[section.start : section.end]
-        entry = {
-            "name": section.name,
-            "heading": section.heading,
-            "rewritten": False,
-            "mode": "kept",
-        }
-
-        try:
-            # Choosing entries is strictly better when it is available: it can
-            # put a project on the page that the template never mentioned,
-            # which rewording never can. It is only available in sections whose
-            # entries repeat and whose headings vary only inside braces, so
-            # most sections still take the path below.
-            candidate = rebuild_entries(section.name, original, chunks, requirements, entry)
-            if candidate is None:
-                candidate = rewrite_section(section.name, original, chunks, requirements)
-                problem = validate(original, candidate, chunks, section.name)
-                if problem:
-                    # One retry, told exactly what it broke. A small model usually
-                    # fails by reflowing structure it was asked to copy, and that is
-                    # the kind of mistake it can fix when the mistake is named.
-                    candidate = rewrite_section(
-                        section.name, original, chunks, requirements, correction=problem
-                    )
-                    problem = validate(original, candidate, chunks, section.name)
-                entry["mode"] = "rewrite"
-            else:
-                # A tripwire rather than a filter here. Rebuilt sections change
-                # only the contents of brace groups that held no command, so an
-                # altered command sequence means this module has a bug, not that
-                # a model misbehaved.
-                problem = validate(original, candidate, chunks, section.name)
-                entry["mode"] = "entries"
-        except Exception as e:  # noqa: BLE001 - one dead section must not lose the rest
-            entry["reason"] = f"the model failed: {e}"
-            report.append(entry)
-            continue
-
-        if problem:
-            entry["reason"] = problem
-            entry["mode"] = "kept"
-            entry.pop("entries", None)
-        else:
+    for section, (candidate, entry) in reversed(list(zip(sections, done))):
+        if candidate is not None:
             out = out[: section.start] + candidate + out[section.end :]
-            entry["rewritten"] = True
-        report.append(entry)
-
-    report.reverse()  # back to document order
-    return out, report
+    return out, [entry for _, entry in done]
 
 
-_SYSTEM = r"""You are a resume editor working on ONE section of a LaTeX resume. You are not writing a document and you are not writing LaTeX — you are replacing English sentences inside LaTeX that already exists.
+def _tailor_section(
+    latex: str, section: Section, chunks: list[KBChunk], requirements: dict
+) -> tuple[str | None, dict]:
+    """One section's replacement text, or None to keep it, plus what happened."""
+    original = latex[section.start : section.end]
+    entry = {
+        "name": section.name,
+        "heading": section.heading,
+        "rewritten": False,
+        "mode": "kept",
+    }
 
-WHAT YOU RETURN
-Return the section body only: the exact LaTeX you were given, character for character, except for the human-readable sentences inside it. Same length, same shape, same order.
+    try:
+        # Choosing entries is strictly better when it is available: it can put
+        # a project on the page that the template never mentioned, which
+        # rewording never can. It is only available in sections whose entries
+        # repeat and whose headings vary only inside braces, so most sections
+        # still take the path below.
+        candidate = rebuild_entries(section.name, original, chunks, requirements, entry)
+        if candidate is None:
+            candidate = rewrite_section(section.name, original, chunks, requirements)
+            entry["mode"] = "rewrite"
+            if candidate is None:
+                # Nothing in here is a sentence we may replace: a heading line,
+                # or bullets built out of macros. There is no call to make, so
+                # none is made.
+                entry["mode"] = "kept"
+                entry["reason"] = "this section has no free text to reword"
+                return None, entry
+        else:
+            entry["mode"] = "entries"
+        # A tripwire rather than a filter for the entries path: it changes only
+        # the contents of brace groups that held no command, so an altered
+        # command sequence means this module has a bug, not that a model
+        # misbehaved. For the reworded path it is the real check on the words.
+        problem = validate(original, candidate, chunks, section.name)
+    except Exception as e:  # noqa: BLE001 - one dead section must not lose the rest
+        entry["reason"] = f"the model failed: {e}"
+        return None, entry
 
-THE STRUCTURE IS NOT YOURS TO TOUCH
-- Copy every \command exactly: same names, same count, same order, same braces.
-- Copy every \begin{...} and its \end{...}, including macros like \resumeItemListStart and \resumeSubHeadingListEnd. A missing one means the resume does not compile.
-- Never add, delete, merge, split or reorder an entry or a bullet. Three bullets in, three bullets out.
-- Never add a package, macro, section or environment. Never add markdown.
+    if problem:
+        entry["reason"] = problem
+        entry["mode"] = "kept"
+        entry.pop("entries", None)
+        return None, entry
 
-FACTS ARE NOT YOURS TO TOUCH
-- Employers, job titles, institutions, product names, locations, dates and links are facts. Copy them exactly, even if a different one would suit the job better.
-- Never state a number, percentage, duration or scale that is not already in this section or in the accomplishments below.
-- Never claim a technology the accomplishments do not show. If the job wants Kubernetes and the candidate has never used it, the section stays as it is.
+    entry["rewritten"] = True
+    return candidate, entry
 
-WHAT YOU ACTUALLY CHANGE
-- Rewrite each bullet so it leads with what was built or achieved, in strong past tense, one sentence.
-- Where the accomplishments genuinely support it, use the target job's own words for the same thing: if they wrote "REST services" and the job says "RESTful APIs", say "RESTful APIs". This is vocabulary matching, not claim making.
-- Put the detail the job asks about first within each bullet. Same fact, better order.
-- If a bullet cannot be improved truthfully, return it unchanged. That is a valid answer.
 
-Output raw LaTeX. No markdown fences, no explanation, no commentary."""
+_SYSTEM = r"""You improve the wording of individual resume lines for one specific job.
+
+You are given numbered lines from one section of a resume, and the candidate's verified record. You return improved lines. You never see or write LaTeX, markup or formatting of any kind: these are sentences.
+
+WHAT YOU CHANGE
+- Rewrite a line so it leads with what was built or achieved, in strong past tense, one sentence.
+- Where the record genuinely supports it, use the target job's own words for the same thing: if the line says "REST services" and the job says "RESTful APIs", write "RESTful APIs". This is vocabulary matching, not claim making.
+- Put the detail this job asks about first within the line. Same fact, better order.
+
+WHAT YOU MUST NOT CHANGE
+- Employers, job titles, institutions, product names, locations, dates and links are facts. Keep them exactly, even if a different one would suit the job better.
+- Never state a number, percentage, duration or scale that is not already in the line you are rewriting or in the record below.
+- Never claim a technology the record does not show. If the job wants Kubernetes and the candidate has never used it, the line stays as it is.
+
+RETURNING A LINE UNCHANGED
+Leave a line out of your answer entirely if it cannot be improved truthfully. That is the expected answer for a certificate, a course title, or a line that is already sharp. Returning two of five lines is fine.
+
+Respond with JSON in exactly this shape:
+{"lines":[{"index":0,"text":"Built X using Y, cutting Z"},{"index":3,"text":"..."}]}"""
 
 # What "rewrite" means depends entirely on the section. Told only to improve the
 # wording, a model turned "Oracle Cloud Infrastructure 2025 AI Foundations
@@ -205,14 +212,25 @@ def rewrite_section(
     body: str,
     chunks: list[KBChunk],
     requirements: dict,
-    correction: str | None = None,
-) -> str:
-    """One focused call: this section's body in, a reworded body out.
+) -> str | None:
+    """Reword this section's sentences, or None if it has none we may touch.
 
-    Every chunk goes in, not a top-k slice: the model is choosing which of the
-    candidate's real accomplishments backs each existing bullet, and it cannot
-    choose one it was never shown.
+    The model is sent the sentences and nothing else. It used to be sent the
+    whole section and asked to return it "character for character, except for
+    the human-readable sentences inside it", which is a bad deal three times
+    over: a 3b model spends most of its output retyping LaTeX, it is slow in
+    proportion to how much it retypes, and the one thing it most often gets
+    wrong is the retyping. Measured on a real resume, that shape took nine
+    minutes and produced a usable rewrite for one section out of four.
+
+    Now only the sentences move. The LaTeX around them cannot change because
+    it is never sent, and `validate` becomes a check on the words rather than
+    a wall against the structure.
     """
+    holes = latex_entries.find_sentences(body)
+    if not holes:
+        return None
+
     required = list(requirements.get("required_skills", []))
     preferred = list(requirements.get("preferred_skills", []))
     responsibilities = list(requirements.get("responsibilities", []))[:6]
@@ -220,12 +238,12 @@ def rewrite_section(
     facts = "\n".join(
         f"[{i}] {c.title}"
         + (f" — {c.company}" if c.company else "")
-        + (f" ({c.date_range})" if c.date_range else "")
         + f"\n    {c.accomplishment}"
         + (f"\n    Impact: {c.impact}" if c.impact else "")
         + (f"\n    Technologies: {', '.join(c.technologies)}" if c.technologies else "")
-        for i, c in enumerate(chunks, start=1)
+        for i, c in enumerate(_fit_facts(chunks), start=1)
     )
+    lines = "\n".join(f"[{i}] {body[h.start : h.end]}" for i, h in enumerate(holes))
     prompt = (
         f"THIS SECTION: {_SECTION_RULES.get(name, '')}\n\n"
         "TARGET JOB\n"
@@ -233,20 +251,49 @@ def rewrite_section(
         f"Preferred skills: {', '.join(preferred) or 'not specified'}\n"
         + (f"Responsibilities: {'; '.join(responsibilities)}\n" if responsibilities else "")
         + "\nUse these words only where the accomplishments below already justify them.\n\n"
-        f"THE CANDIDATE'S COMPLETE VERIFIED RECORD ({len(chunks)} accomplishments; "
-        "the only facts that exist):\n"
-        f"{facts}\n\n"
-        + (
-            f"YOUR PREVIOUS ATTEMPT WAS REJECTED: {correction}.\n"
-            "Fix exactly that and change nothing else. When in doubt, return a "
-            "line completely unchanged.\n\n"
-            if correction
-            else ""
-        )
-        + f"THE {name.upper()} SECTION TO REWRITE — return it with the same LaTeX and "
-        f"better sentences:\n{body}"
+        f"THE CANDIDATE'S VERIFIED RECORD (the only facts that exist):\n{facts}\n\n"
+        f"THE LINES TO IMPROVE:\n{lines}"
     )
-    return _strip_fences(generate_text(_SYSTEM, prompt, timeout=None, max_tokens=3000))
+    # Sized to the answer. A small model asked for JSON does not stop when it
+    # has said everything: given a cap of 1500 it emits 1500, which at the
+    # thirteen tokens a second a 3b model manages on a laptop CPU is two
+    # minutes of padding per section. One rewritten line is about fifty tokens.
+    raw = generate_json(
+        _SYSTEM, prompt, timeout=300, max_tokens=min(900, 120 + 70 * len(holes))
+    )
+
+    values: dict[latex_entries.Hole, str] = {}
+    for item in raw.get("lines") or []:
+        if not isinstance(item, dict):
+            continue
+        index = _as_index(item.get("index"), len(holes))
+        text = str(item.get("text") or "").strip()
+        # An unchanged line is a valid answer and costs nothing to skip.
+        if index is None or not text or text == body[holes[index].start : holes[index].end]:
+            continue
+        values[holes[index]] = latex_entries.escape(text)
+
+    return latex_entries.fill(body, values) if values else None
+
+
+def _fit_facts(chunks: list[KBChunk], budget: int = 1800) -> list[KBChunk]:
+    """As much of the record as fits a sane prompt, best first.
+
+    The whole knowledge base used to go into every call. It arrives ranked, so
+    a cap costs the least relevant accomplishments and buys back the prompt
+    time that a local model pays on every one of them: a laptop CPU reads
+    about fifty tokens a second, so nine thousand characters of record is a
+    minute of waiting before the model writes anything. Rewording needs the
+    record only to know which words are already earned, and the accomplishments
+    that answer that are the ones this job ranked to the top.
+    """
+    kept, used = [], 0
+    for chunk in chunks:
+        used += len(chunk.accomplishment or "") + len(chunk.title or "") + 40
+        if used > budget and kept:
+            break
+        kept.append(chunk)
+    return kept
 
 
 _SELECT_SYSTEM = """You are choosing which of a candidate's real projects belong on their resume for one specific job, and writing the bullets for each.
@@ -305,16 +352,39 @@ def rebuild_entries(
         return None  # nothing to choose between: rewording is the honest answer
 
     roles = _hole_roles(body, entries)
+    # Everything that can rule this section out is checked before any model
+    # call, not after. Both of these used to be discovered in the loop that
+    # renders the answer, which meant a section that could never be filled
+    # still paid for the most expensive call in the file to find that out. On a
+    # real resume that was two calls and six minutes spent on a decision that
+    # needed neither.
+    #
     # A slot can only be filled by a project with at least as many
     # accomplishments as it has bullets, because writing four bullets from two
-    # facts is how invention starts. Matching slot to project is done when the
-    # slots are known; this only drops projects too small for any of them.
+    # facts is how invention starts. And every hole in the heading must have
+    # something in the knowledge base to put in it: a template that prints a
+    # link next to each project has a hole nothing here can write, and filling
+    # the rest would leave one project's link under another project's name.
     needed = max(len(e.bullets) for e in entries)
-    usable = [g for g in groups if len(g.chunks) >= min(len(e.bullets) for e in entries)]
+    smallest = min(len(e.bullets) for e in entries)
+    big_enough = [g for g in groups if len(g.chunks) >= smallest]
+    usable = [g for g in big_enough if _hole_values(roles, g) is not None]
+
+    if not usable and big_enough:
+        report["entries_declined"] = (
+            "each entry here shows a link, and the knowledge base does not "
+            "store one, so swapping a project in would leave the old project's "
+            "link beside the new project's name"
+            if "link" in roles
+            else "these headings have more fields than the knowledge base can "
+            "fill, so a swapped-in project would keep some of the old one's "
+            "details"
+        )
+        return None
     if len(usable) < len(entries):
-        report["reason"] = (
-            f"no {len(entries)} projects in the knowledge base have enough "
-            "accomplishments for this section's bullets"
+        report["entries_declined"] = (
+            f"fewer than {len(entries)} projects in the knowledge base have "
+            "enough accomplishments to fill this section's entries"
         )
         return None
 
@@ -381,7 +451,20 @@ def _select(
         f"PROJECT {i}\n{describe(group, limit=detail)}" for i, group in enumerate(groups)
     )
     prompt = _select_prompt(name, slots, catalogue, requirements)
-    raw = generate_json(_SELECT_SYSTEM, prompt, timeout=300, max_tokens=2000)
+    # Sized to the answer rather than to what might fit, with room to spare.
+    # Too tight is not a smaller answer, it is a truncated one: the JSON stops
+    # mid-string and fails to parse.
+    wanted = sum(len(e.bullets) for e in entries)
+    try:
+        raw = generate_json(
+            _SELECT_SYSTEM, prompt, timeout=300, max_tokens=min(1500, 250 + 90 * wanted)
+        )
+    except Exception:  # noqa: BLE001
+        # A model that times out, disconnects or returns half a JSON object is
+        # the same answer as one that chooses badly: there is no plan. Ranking
+        # still has one, and letting this escape would lose the whole section
+        # to a fallback that was sitting right there.
+        return None
 
     plan = raw.get("slots")
     if not isinstance(plan, list) or len(plan) != len(entries):
@@ -510,6 +593,11 @@ def _hole_values(roles: list[str], group: Group) -> list[str] | None:
     values: list[str] = []
     text_holes = 0
     for role in roles:
+        if role == "link":
+            return None  # nothing in the knowledge base is a URL
+        if role == "empty":
+            values.append("")  # the author left it blank; leaving it blank is faithful
+            continue
         if role == "date":
             value = group.date_range
         elif text_holes == 0:
@@ -756,10 +844,3 @@ def _canonical(heading: str) -> str:
     return ""
 
 
-def _strip_fences(text: str) -> str:
-    """Models wrap code in ``` even when told not to."""
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
-        stripped = re.sub(r"\n?```$", "", stripped)
-    return stripped

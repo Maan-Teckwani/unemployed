@@ -18,6 +18,7 @@ export function LatexPanel({ resume }: { resume: Resume }) {
   const [open, setOpen] = useState(false);
   const sections = resume.ats_report.latex_sections ?? [];
   const chosen = sections.filter((s) => s.mode === "entries" && s.rewritten);
+  const declined = sections.filter((s) => s.entries_declined);
 
   async function copy() {
     try {
@@ -73,6 +74,17 @@ export function LatexPanel({ resume }: { resume: Resume }) {
               : "Chosen and reworded for this job. Every number and name traces back to an accomplishment you wrote."}
           </p>
         </div>
+      ))}
+
+      {/* Why a section was only reworded. Without this the answer to "why
+          didn't it pick my projects" is invisible, and the fix is usually one
+          line of the user's own template. */}
+      {declined.map((s) => (
+        <p key={s.heading} className="text-xs text-muted-foreground">
+          <span className="font-medium">{s.heading}:</span> reworded the entries
+          you wrote rather than choosing new ones, because{" "}
+          {s.entries_declined}.
+        </p>
       ))}
 
       {sections.some((s) => !s.rewritten) && (

@@ -28,6 +28,10 @@ _CHARS_PER_TOKEN = 3.5
 # prompt that exactly fills the window leaves the model nowhere to answer.
 _RESERVED_FOR_REPLY = 2048
 
+# How long Ollama keeps the model in memory after a call. Long enough to cover
+# a whole resume, which is several calls with our own work in between.
+KEEP_ALIVE = "15m"
+
 
 def fits_context(system: str, prompt: str, max_tokens: int = 1200) -> bool:
     """Whether this call can be answered without the window silently truncating.
@@ -67,6 +71,10 @@ def generate_json(
         ],
         "stream": False,
         "format": "json",  # Ollama guarantees the response is valid JSON.
+        # Generating one resume is several calls a minute or two apart. Ollama
+        # unloads a model five minutes after the last one by default, and a
+        # cold load of a 3b model costs seconds that the user watches.
+        "keep_alive": KEEP_ALIVE,
         "options": {
             "temperature": 0.1,
             "num_predict": max_tokens,
@@ -95,6 +103,7 @@ def generate_text(
             {"role": "user", "content": prompt},
         ],
         "stream": False,
+        "keep_alive": KEEP_ALIVE,
         "options": {
             "temperature": 0.1,
             "num_predict": max_tokens,

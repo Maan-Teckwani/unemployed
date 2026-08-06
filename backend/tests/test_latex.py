@@ -239,7 +239,7 @@ def test_numbers_already_in_the_section_are_not_inventions() -> None:
 
 
 def _tailor_with(monkeypatch, rewrite):
-    """Stubs take **kwargs because a failed rewrite is retried with `correction`."""
+    """Stubs take **kwargs so they survive the call signature growing."""
     monkeypatch.setattr(latex_mod, "rewrite_section", rewrite)
     return tailor(TEMPLATE, CHUNKS, {"required_skills": ["Go"]})
 
@@ -264,22 +264,44 @@ def test_a_broken_rewrite_keeps_the_original_section(monkeypatch) -> None:
     assert all("brace" in e["reason"] for e in report)
 
 
-def test_a_rejected_rewrite_is_retried_once_with_the_reason(monkeypatch) -> None:
-    """A small model mostly fails by reflowing structure it was told to copy,
-    which it can fix when told what it broke."""
-    attempts: list[str | None] = []
+def test_each_section_is_asked_for_once(monkeypatch) -> None:
+    """There used to be a retry, because the model kept reflowing structure it
+    had been told to copy. It is not shown any structure now, so that failure
+    cannot happen and the second call was pure latency: on a real resume it was
+    four extra minutes buying four rejections."""
+    calls: list[str] = []
 
-    def rewrite(name, body, chunks, reqs, correction=None):
-        attempts.append(correction)
-        # Break it the first time, copy it faithfully on the retry.
-        return r"\resumeItem{oops" if correction is None else body
+    def rewrite(name, body, *a, **kw):
+        calls.append(name)
+        return body
 
     out, report = _tailor_with(monkeypatch, rewrite)
-
     assert out == TEMPLATE, "a faithful copy changes nothing"
-    assert all(e["rewritten"] for e in report)
-    assert attempts.count(None) == 3, "one first attempt per rewritable section"
-    assert all("brace" in a for a in attempts if a), "the retry is told what broke"
+    assert sorted(calls) == ["experience", "projects", "skills"]
+
+
+def test_sections_do_not_wait_for_each_other(monkeypatch) -> None:
+    """Each section reads one span of the original and writes a replacement for
+    that span, so nothing crosses between them. Run one at a time, the user
+    waits for the sum of four model calls to get an answer that was ready in
+    the time of the slowest."""
+    import threading
+    import time
+
+    inside = []
+    peak = 0
+
+    def rewrite(name, body, *a, **kw):
+        nonlocal peak
+        inside.append(name)
+        peak = max(peak, len(inside))
+        time.sleep(0.05)
+        inside.remove(name)
+        return body
+
+    _tailor_with(monkeypatch, rewrite)
+    assert peak > 1, "sections were rewritten one after another"
+    assert threading.active_count() >= 1
 
 
 def test_a_failing_model_call_keeps_the_original_section(monkeypatch) -> None:
@@ -444,6 +466,22 @@ def test_the_ranked_fallback_quotes_the_knowledge_base_exactly(monkeypatch) -> N
     assert "Shipped an alerting service" in out
 
 
+def test_half_a_json_object_is_no_plan_rather_than_no_section(monkeypatch) -> None:
+    """A truncated reply raises while being parsed. Letting that escape loses
+    the whole section to a fallback that was sitting right there, which is how
+    capping the output turned a working section into a kept one."""
+
+    def truncated(*a, **kw):
+        raise ValueError("Unterminated string starting at: line 1 column 42")
+
+    monkeypatch.setattr(latex_mod, "generate_json", truncated)
+    monkeypatch.setattr(latex_mod, "rewrite_section", lambda name, body, *a, **kw: body)
+    out, report = tailor(ENTRY_TEMPLATE, ENTRY_CHUNKS, {})
+    assert report[0]["mode"] == "entries"
+    assert report[0]["chosen_by"] == "ranking"
+    assert "MarketPulse" in out
+
+
 def test_a_bullet_citing_another_project_is_refused(monkeypatch) -> None:
     """Bullets belong to the entry they are printed under. A true sentence
     about a different project is a false one about this heading."""
@@ -479,6 +517,23 @@ def test_the_same_project_cannot_fill_two_slots(monkeypatch) -> None:
     out, report = _refused(monkeypatch, _plan((0, "MarketPulse"), (0, "MarketPulse")))
     assert report[0]["chosen_by"] == "ranking"
     assert out.count(r"\textbf{MarketPulse}") == 1
+
+
+def test_a_link_in_every_heading_declines_before_spending_a_call(monkeypatch) -> None:
+    """The knowledge base stores no URLs, so a swapped-in project would keep
+    the old project's link. That is decidable from the template alone, and it
+    used to be discovered after the most expensive call in the file had already
+    been paid for."""
+    linked = ENTRY_TEMPLATE.replace(
+        r"\textit{Legacy}", r"\textit{Legacy} \href{https://old.example.com}{old.example.com}"
+    )
+    monkeypatch.setattr(
+        latex_mod, "generate_json", lambda *a, **kw: pytest.fail("asked before checking")
+    )
+    monkeypatch.setattr(latex_mod, "rewrite_section", lambda name, body, *a, **kw: body)
+    out, report = tailor(linked, ENTRY_CHUNKS, {})
+    assert out == linked
+    assert "link" in report[0]["entries_declined"]
 
 
 def test_too_few_projects_to_choose_from_falls_back(monkeypatch) -> None:
