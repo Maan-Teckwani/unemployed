@@ -13,7 +13,7 @@ from datetime import datetime
 
 import httpx
 
-from app.connectors.base import TIMEOUT, RawJob, strip_html
+from app.connectors.base import HEADERS, TIMEOUT, RawJob, strip_html
 from app.ingestion.relevance import DEFAULT_REGION, is_relevant
 
 LIST_URL = "https://api.smartrecruiters.com/v1/companies/{token}/postings"
@@ -60,6 +60,7 @@ def _list_postings(token: str) -> list[dict]:
             params={"limit": PAGE_SIZE, "offset": offset},
             timeout=TIMEOUT,
             follow_redirects=True,
+            headers=HEADERS,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -77,6 +78,7 @@ def _description(token: str, posting_id: str) -> str:
             f"{LIST_URL.format(token=token)}/{posting_id}",
             timeout=TIMEOUT,
             follow_redirects=True,
+            headers=HEADERS,
         )
         resp.raise_for_status()
         sections = ((resp.json().get("jobAd") or {}).get("sections")) or {}

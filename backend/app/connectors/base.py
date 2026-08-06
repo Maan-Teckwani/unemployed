@@ -12,6 +12,16 @@ from datetime import datetime
 # Connectors get their own timeout: a slow board should fail fast, not hang the run.
 TIMEOUT = 30.0
 
+# Who is knocking. These are public endpoints belonging to other people, and
+# the run now reads eight of them at once, so it should be possible to tell
+# what this traffic is and where to complain about it from the logs alone.
+HEADERS = {
+    "User-Agent": (
+        "unemployed/1.0 (+https://github.com/Maan-Teckwani/unemployed) "
+        "local job search assistant"
+    )
+}
+
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\n{3,}")
 
