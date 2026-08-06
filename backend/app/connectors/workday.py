@@ -154,6 +154,46 @@ def resolve(url: str, region: str = DEFAULT_REGION) -> dict | None:
     return None
 
 
+_BOARD_URL = re.compile(
+    r"https?://[\w-]+\.wd\d+\.myworkdayjobs\.com/[^\s\"'<>)]*", re.I
+)
+_CAREERS_SUBDOMAINS = ("careers", "jobs")
+
+
+def find_by_domain(domain: str, region: str = DEFAULT_REGION) -> dict | None:
+    """Look for a Workday board behind a company's careers domain.
+
+    The only automatic route that is both cheap and honest. Companies front
+    Workday with `careers.example.com`, and some of those either redirect
+    straight to the board or name it in the page, which hands over the site
+    slug rather than guessing it. Two requests, against the company's own
+    site rather than Workday's.
+
+    Yield is low, roughly one company in fifteen: most careers sites are
+    single page apps that build the link in JavaScript, so it is not in the
+    HTML we get. That is worth doing anyway at two requests a company, and it
+    is worth being clear that it does not replace pasting a link. The slugs it
+    does find are exactly why: Target's is "targetcareers" and Citi's is "2".
+    """
+    for sub in _CAREERS_SUBDOMAINS:
+        try:
+            resp = httpx.get(
+                f"https://{sub}.{domain}",
+                timeout=TIMEOUT,
+                follow_redirects=True,
+                headers=_PAGE_HEADERS,
+            )
+        except Exception:  # noqa: BLE001 - no such site is simply "not found"
+            continue
+        # Where we ended up, then what the page points at.
+        found = _BOARD_URL.search(str(resp.url)) or _BOARD_URL.search(resp.text or "")
+        if found:
+            resolved = resolve(found.group(0), region)
+            if resolved:
+                return resolved
+    return None
+
+
 def _declared_config(page_url: str) -> tuple[str, str] | None:
     try:
         resp = httpx.get(

@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 from sqlalchemy import func, select
 
+from app.connectors import workday
 from app.connectors.companies import SEED_COMPANIES
 from app.db.models import Company as CompanyRow
 from app.db.models import Preferences
@@ -118,6 +119,18 @@ def matched_job_count(platform: str, entries: list[dict], region: str) -> int:
     return count
 
 
+def domain_variants(name: str) -> list[str]:
+    """Candidate company domains, for the Workday step below.
+
+    A guess, and a cheap one to be wrong about: a domain that does not exist
+    fails to resolve immediately. "John Deere" is deere.com and this will not
+    find it, which is what pasting a link is for.
+    """
+    compact = re.sub(r"[^a-z0-9]", "", name.lower().strip())
+    hyphen = re.sub(r"[^a-z0-9]+", "-", name.lower().strip()).strip("-")
+    return [f"{v}.com" for v in dict.fromkeys((compact, hyphen)) if len(v) >= 3]
+
+
 def find_company(name: str, region: str = DEFAULT_REGION) -> dict | None:
     """Locate one company's board. First platform with matching jobs wins.
 
@@ -137,6 +150,16 @@ def find_company(name: str, region: str = DEFAULT_REGION) -> dict | None:
                     "total_jobs": len(entries),
                     "matched_jobs": matched,
                 }
+
+    # Workday last, and only for companies nothing else claimed. It cannot be
+    # probed by slug like the others, so this goes at the company's own careers
+    # domain and looks for a board behind it. Roughly one in fifteen answers;
+    # the rest build the link in JavaScript and are why the settings page takes
+    # a pasted link.
+    for domain in domain_variants(name):
+        found = workday.find_by_domain(domain, region)
+        if found:
+            return {**found, "name": name}
     return None
 
 
