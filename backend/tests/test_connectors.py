@@ -149,6 +149,47 @@ def test_a_failed_detail_does_not_lose_the_board(monkeypatch) -> None:
     assert jobs[0].description == ""
 
 
+def test_a_huge_board_is_capped_rather_than_fetched_forever(monkeypatch) -> None:
+    """Descriptions cost a request each, so a board with hundreds of matching
+    roles would otherwise be hundreds of round trips against someone else's
+    API in the middle of a fetch. The cap is a real limit and worth knowing
+    about: past it, a board is silently truncated."""
+    many = {
+        "total": 500,
+        "jobPostings": [
+            {
+                "title": f"Engineer {i}",
+                "externalPath": f"/job/India-Bengaluru/Engineer-{i}_JR{i}",
+                "locationsText": "Bengaluru",
+                "bulletFields": [f"JR{i}"],
+            }
+            for i in range(workday.PAGE_SIZE)
+        ],
+    }
+    details = []
+
+    class Resp:
+        def __init__(self, p):
+            self._p = p
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._p
+
+    monkeypatch.setattr(workday.httpx, "post", lambda *a, **kw: Resp(many))
+    monkeypatch.setattr(
+        workday.httpx,
+        "get",
+        lambda url, **kw: (details.append(url), Resp(WORKDAY_DETAIL))[1],
+    )
+
+    jobs = workday.fetch(TOKEN, "NVIDIA", "india")
+    assert len(jobs) == workday.MAX_DETAIL_FETCHES
+    assert len(details) == workday.MAX_DETAIL_FETCHES
+
+
 def _empty():
     class R:
         def raise_for_status(self):
