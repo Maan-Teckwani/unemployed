@@ -94,4 +94,28 @@ SEED_COMPANIES: list[str] = [
     "Jio", "Airtel", "Vodafone Idea", "Tata Digital", "Reliance Retail",
     "Aditya Birla", "Mahindra", "Bajaj Auto", "Maruti Suzuki", "Hero MotoCorp",
     "Asian Paints", "ITC", "HUL", "Britannia", "Marico", "Dabur",
+    # --- Global capability centres ---
+    #
+    # The multinationals that do real engineering in Bengaluru, Hyderabad, Pune
+    # and Chennai, and hire freshers into it. They were missing from a list that
+    # was otherwise a good map of Indian startups, which is why the app could
+    # read two thousand jobs without one from a GCC.
+    #
+    # Almost all of them are on Workday, which has no slug to probe, so most
+    # arrive through the careers page step in `discover` or through a pasted
+    # link rather than through the slug guesses.
+    "NVIDIA", "Hewlett Packard Enterprise", "Dell Technologies", "Marvell",
+    "Applied Materials", "Western Digital", "Seagate", "Lam Research", "KLA",
+    "Citi", "HSBC", "Standard Chartered", "Bank of America", "Nasdaq", "LSEG",
+    "Fidelity Investments", "S&P Global", "Fiserv", "FIS", "Discover Financial",
+    "Optum", "UnitedHealth Group", "Medtronic", "Stryker", "AstraZeneca",
+    "GSK", "Novartis", "Sanofi", "Zoetis",
+    "Tesco", "Lowe's", "Nike", "Unilever", "PepsiCo", "Mondelez",
+    "Colgate-Palmolive", "Kimberly-Clark",
+    "Shell", "Maersk", "Honeywell", "Caterpillar", "John Deere", "Cummins",
+    "Emerson", "Schneider Electric", "ABB", "Bosch", "3M",
+    "Rolls-Royce", "Airbus", "Baker Hughes",
+    "Thomson Reuters", "Verizon", "Ericsson", "Nokia",
+    "Genpact", "Kyndryl", "DXC Technology",
+    "Micron Technology", "eBay", "Expedia Group", "Autodesk",
 ]

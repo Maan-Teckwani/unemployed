@@ -119,16 +119,122 @@ def matched_job_count(platform: str, entries: list[dict], region: str) -> int:
     return count
 
 
+# .in as well as .com, because half this list is Indian and half of those are
+# not on .com: groww.in, juspay.in, kreditbee.in, payu.in. Guessing only .com
+# found one company in a hundred and twenty, and the page scan was not the part
+# that was failing.
+_TLDS = (".com", ".in")
+
+
 def domain_variants(name: str) -> list[str]:
-    """Candidate company domains, for the Workday step below.
+    """Candidate company domains, for the careers page step below.
 
     A guess, and a cheap one to be wrong about: a domain that does not exist
-    fails to resolve immediately. "John Deere" is deere.com and this will not
-    find it, which is what pasting a link is for.
+    fails to resolve immediately. Plenty are unguessable ("John Deere" is
+    deere.com, Zepto is zepto.co.in, PhysicsWallah is pw.live), which is what
+    pasting a link is for.
     """
     compact = re.sub(r"[^a-z0-9]", "", name.lower().strip())
     hyphen = re.sub(r"[^a-z0-9]+", "-", name.lower().strip()).strip("-")
-    return [f"{v}.com" for v in dict.fromkeys((compact, hyphen)) if len(v) >= 3]
+    stems = [v for v in dict.fromkeys((compact, hyphen)) if len(v) >= 3]
+    return [f"{stem}{tld}" for stem in stems for tld in _TLDS]
+
+
+# Where a board's slug appears when a careers page links to it. Reading the
+# slug beats guessing it: Razorpay's Greenhouse board is
+# "razorpaysoftwareprivatelimited", which no variant of "Razorpay" produces.
+_BOARD_LINKS = {
+    "greenhouse": re.compile(
+        r"(?:job-)?boards(?:-api)?\.greenhouse\.io/(?:embed/job_board\?for=)?([A-Za-z0-9_-]+)",
+        re.I,
+    ),
+    "lever": re.compile(r"jobs\.lever\.co/([A-Za-z0-9_-]+)", re.I),
+    "ashby": re.compile(r"jobs\.ashbyhq\.com/([A-Za-z0-9_-]+)", re.I),
+    "smartrecruiters": re.compile(
+        r"(?:careers|jobs)\.smartrecruiters\.com/([A-Za-z0-9_-]+)", re.I
+    ),
+    "recruitee": re.compile(r"https?://([A-Za-z0-9_-]+)\.recruitee\.com", re.I),
+}
+_WORKDAY_LINK = re.compile(r"https?://[\w-]+\.wd\d+\.myworkdayjobs\.com/[^\s\"'<>)]*", re.I)
+
+_CAREERS_URLS = ("https://careers.{d}", "https://{d}/careers", "https://jobs.{d}")
+_PAGE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; unemployed/1.0; "
+        "+https://github.com/Maan-Teckwani/unemployed)"
+    ),
+    "Accept": "text/html,application/xhtml+xml",
+}
+# Careers pages are large and the links are near the top of what matters. This
+# is a cap on how much of one we are willing to read, not on what we accept.
+_MAX_PAGE = 400_000
+
+
+def find_via_careers_page(name: str, region: str = DEFAULT_REGION) -> dict | None:
+    """Read a company's careers page and take the board slug out of it.
+
+    The guessing above turns a name into candidate slugs, which works when a
+    company's board is named after the company and fails silently when it is
+    not. Razorpay is on Greenhouse as "razorpaysoftwareprivatelimited" and was
+    counted as having no board at all.
+
+    So this asks the company instead. Their careers page links to whichever
+    board they use, and that link carries the exact slug. It also finds
+    platforms the slug probes cannot reach at all, which is why Workday is
+    handled here rather than separately.
+
+    Not a replacement for the probes: most careers pages build their links in
+    JavaScript, so roughly a quarter of companies answer this way. It runs last,
+    for names nothing else claimed, and costs three requests against the
+    company's own site.
+    """
+    for domain in domain_variants(name):
+        for template in _CAREERS_URLS:
+            page = _read(template.format(d=domain))
+            if page is None:
+                continue
+            found = _board_in(page, region)
+            if found:
+                return {**found, "name": name}
+    return None
+
+
+def _read(url: str) -> str | None:
+    try:
+        resp = httpx.get(
+            url, timeout=PROBE_TIMEOUT, follow_redirects=True, headers=_PAGE_HEADERS
+        )
+    except Exception:  # noqa: BLE001 - no such site is simply "not found"
+        return None
+    if resp.status_code != 200:
+        return None
+    # The final URL matters as much as the body: plenty of careers domains are
+    # a redirect straight onto the board.
+    return f"{resp.url} {(resp.text or '')[:_MAX_PAGE]}"
+
+
+def _board_in(page: str, region: str) -> dict | None:
+    """The first board named on this page that has jobs for this region."""
+    workday_link = _WORKDAY_LINK.search(page)
+    if workday_link:
+        resolved = workday.resolve(workday_link.group(0), region)
+        if resolved:
+            return resolved
+
+    for platform, pattern in _BOARD_LINKS.items():
+        for slug in dict.fromkeys(pattern.findall(page)):
+            entries = probe(platform, slug)
+            if entries is None:
+                continue
+            matched = matched_job_count(platform, entries, region)
+            if matched > 0:
+                return {
+                    "source": platform,
+                    "token": slug,
+                    "total_jobs": len(entries),
+                    "matched_jobs": matched,
+                }
+    return None
 
 
 def find_company(name: str, region: str = DEFAULT_REGION) -> dict | None:
@@ -151,19 +257,20 @@ def find_company(name: str, region: str = DEFAULT_REGION) -> dict | None:
                     "matched_jobs": matched,
                 }
 
-    # Workday last, and only for companies nothing else claimed. It cannot be
-    # probed by slug like the others, so this goes at the company's own careers
-    # domain and looks for a board behind it. Roughly one in fifteen answers;
-    # the rest build the link in JavaScript and are why the settings page takes
-    # a pasted link.
-    for domain in domain_variants(name):
-        found = workday.find_by_domain(domain, region)
-        if found:
-            return {**found, "name": name}
-    return None
+    # Nothing claimed this name, so ask the company where its board is rather
+    # than guessing at it again. This is also the only route to Workday, which
+    # has no slug to probe.
+    return find_via_careers_page(name, region)
 
 
-def discover(names: list[str], region: str = DEFAULT_REGION) -> list[dict]:
+def discover(names: list[str], region: str = DEFAULT_REGION, on_progress=None) -> list[dict]:
+    """Probe every name, reporting as answers come back.
+
+    `on_progress(done, total, message)` is optional so the CLI keeps working
+    untouched. The UI needs it: a name that reaches the careers page step costs
+    several requests to someone else's site, so a sweep is minutes long and a
+    bar that sits at zero until the end looks like a hang.
+    """
     found: list[dict] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         results = pool.map(lambda n: find_company(n, region), names)
@@ -176,6 +283,8 @@ def discover(names: list[str], region: str = DEFAULT_REGION) -> list[dict]:
                 )
             elif i % 25 == 0:
                 print(f"  [{i}/{len(names)}] …")
+            if on_progress:
+                on_progress(i, len(names), f"Checked {i} of {len(names)}, found {len(found)}")
     return found
 
 
