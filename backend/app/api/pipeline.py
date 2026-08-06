@@ -145,7 +145,7 @@ def _discover(db: Session, progress) -> None:
     names = [n for n in SEED_COMPANIES if n not in known]
 
     progress(0, len(names), f"Checking {len(names)} companies")
-    found = discover(names, region)
+    found = discover(names, region, on_progress=progress)
 
     existing = {(c.source, c.token) for c in db.scalars(select(Company))}
     for entry in found:
@@ -161,7 +161,13 @@ def _discover(db: Session, progress) -> None:
         )
         existing.add((entry["source"], entry["token"]))
     db.commit()
-    progress(len(names), len(names), f"Added {len(found)} companies")
+    # Both numbers, because "added 8" on its own reads as a poor result when it
+    # is eight companies out of three hundred that have no public board to find.
+    progress(
+        len(names),
+        len(names),
+        f"Added {len(found)} of {len(names)} checked — the rest have no public board we can read",
+    )
 
 
 def _as_dict(run: PipelineRun) -> dict:
