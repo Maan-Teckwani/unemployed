@@ -48,13 +48,30 @@ $Venv = Join-Path $Backend ".venv\Scripts\python.exe"
   A weaker model writes a worse resume. A laptop that runs out of memory writes
   no resume and frightens the person using it.
 #>
+$Models = @{
+    "llama3.2:1b" = @{ Download = "1.3 GB"; Memory = 1.9 }
+    "llama3.2:3b" = @{ Download = "2 GB"; Memory = 3.9 }
+    "llama3.1:8b" = @{ Download = "4.7 GB"; Memory = 9.0 }
+}
+# What the OS, this app's backend, the web server and a browser are already
+# holding before the model loads.
+$OverheadGB = 5
+
 $RamGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
-if ($RamGB -ge 15) {
+
+# A model named in .env wins. That is either a deliberate choice or this
+# script's own line from a previous run, and choosing again over the top of it
+# would download a model the backend is not going to load. The old
+# .env.example shipped OLLAMA_MODEL uncommented, so there are people carrying
+# a pinned 3b on a laptop that cannot hold it; they get told rather than
+# quietly overruled.
+$Model = Get-PinnedModel
+if ($Model) {
+    $Pinned = $true
+} elseif ($RamGB -ge 15) {
     $Model = "llama3.2:3b"
-    $ModelSize = "2 GB"
 } else {
     $Model = "llama3.2:1b"
-    $ModelSize = "1.3 GB"
 }
 
 function Say($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -164,6 +181,19 @@ function Probe($block) {
     finally { $ErrorActionPreference = $previous }
 }
 
+function Get-PinnedModel {
+    <#
+      The model named in .env, or null. This is what the backend will load,
+      whatever this script decides, so it is also what this script must use.
+    #>
+    $envFile = Join-Path $Root ".env"
+    if (-not (Test-Path $envFile)) { return $null }
+    $line = Select-String -Path $envFile -Pattern '^\s*OLLAMA_MODEL\s*=\s*(\S+)' |
+            Select-Object -First 1
+    if (-not $line) { return $null }
+    return $line.Matches[0].Groups[1].Value
+}
+
 function Save-ModelChoice($model) {
     <#
       Tell the backend which model was chosen.
@@ -173,17 +203,8 @@ function Save-ModelChoice($model) {
       one here without writing it down would download the right model and then
       run the wrong one, which fails as a connection error naming a model the
       user never asked for.
-
-      An existing OLLAMA_MODEL is never overwritten. That is either a choice the
-      user made deliberately, or this line from an earlier run, and neither
-      should be reversed because they closed some tabs before running the script.
     #>
-    $envFile = Join-Path $Root ".env"
-    if ((Test-Path $envFile) -and
-        (Select-String -Path $envFile -Pattern '^\s*OLLAMA_MODEL\s*=' -Quiet)) {
-        return
-    }
-    Add-Content -Path $envFile -Value "OLLAMA_MODEL=$model"
+    Add-Content -Path (Join-Path $Root ".env") -Value "OLLAMA_MODEL=$model"
     Ok "Wrote OLLAMA_MODEL=$model to .env"
 }
 
@@ -253,21 +274,32 @@ catch {
     }
 }
 
-Ok "$RamGB GB of memory on this machine, so: $Model"
-if ($RamGB -lt 8) {
-    Ok "That is tight even for this model. Close what you can while the app runs."
+$needs = $Models[$Model].Memory
+if ($Pinned) {
+    Ok "$Model is set in .env, so that is what runs ($RamGB GB on this machine)"
+    if ($needs -and ($needs + $OverheadGB) -gt $RamGB) {
+        Write-Host ("    Warning: $Model needs about {0} GB while running, and this app plus" -f $needs) -ForegroundColor Yellow
+        Write-Host ("    Windows and a browser already use about $OverheadGB GB of your $RamGB GB.") -ForegroundColor Yellow
+        Write-Host ("    Remove the OLLAMA_MODEL line from .env to let this script choose one that fits.") -ForegroundColor Yellow
+    }
+} else {
+    Ok "$RamGB GB of memory on this machine, so: $Model"
+    if ($RamGB -lt 8) {
+        Ok "That is tight even for this model. Close what you can while the app runs."
+    }
 }
 
 $models = Probe { ollama list }
 if ($models -notmatch [regex]::Escape($Model)) {
-    Ok "Downloading $Model (about $ModelSize, one time)..."
+    $size = $Models[$Model].Download
+    Ok ("Downloading $Model" + $(if ($size) { " (about $size, one time)" } else { "" }) + "...")
     ollama pull $Model
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nModel download failed. Check your connection and re-run." -ForegroundColor Red
         exit 1
     }
 }
-Save-ModelChoice $Model
+if (-not $Pinned) { Save-ModelChoice $Model }
 Ok "$Model ready"
 
 # --- 3. Backend -------------------------------------------------------------

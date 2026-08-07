@@ -48,6 +48,37 @@ total_ram_gb() {
   fi
 }
 
+# What each model holds while running, rounded up, and what it costs to fetch.
+# Plain case statements rather than associative arrays: macOS still ships bash
+# 3.2, where `declare -A` is a syntax error.
+model_memory_gb() {
+  case "$1" in
+    llama3.2:1b) echo 2 ;;
+    llama3.2:3b) echo 4 ;;
+    llama3.1:8b) echo 9 ;;
+    *) echo 0 ;;
+  esac
+}
+model_download() {
+  case "$1" in
+    llama3.2:1b) echo "1.3 GB" ;;
+    llama3.2:3b) echo "2 GB" ;;
+    llama3.1:8b) echo "4.7 GB" ;;
+    *) echo "" ;;
+  esac
+}
+
+# The OS, this app's backend, the web server and a browser, before the model.
+OVERHEAD_GB=5
+
+# The model named in .env, if any. That is what the backend will load whatever
+# this script decides, so it is what this script has to use too.
+pinned_model() {
+  [ -f "$ROOT/.env" ] || return 0
+  sed -n 's/^[[:space:]]*OLLAMA_MODEL[[:space:]]*=[[:space:]]*\([^[:space:]]*\).*/\1/p' \
+    "$ROOT/.env" | head -1
+}
+
 say() { printf "\n==> %s\n" "$1"; }
 ok() { printf "    %s\n" "$1"; }
 die() { printf "\n%s\n" "$1" >&2; exit 1; }
@@ -150,25 +181,34 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
 fi
 
 RAM_GB="$(total_ram_gb)"
-if [ "$RAM_GB" -ge 15 ]; then
-  MODEL="llama3.2:3b"; MODEL_SIZE="2 GB"
+PINNED="$(pinned_model)"
+if [ -n "$PINNED" ]; then
+  MODEL="$PINNED"
+  ok "$MODEL is set in .env, so that is what runs (${RAM_GB} GB on this machine)"
+  NEEDS="$(model_memory_gb "$MODEL")"
+  if [ "$NEEDS" -gt 0 ] && [ $((NEEDS + OVERHEAD_GB)) -gt "$RAM_GB" ]; then
+    ok "Warning: $MODEL needs about ${NEEDS} GB while running, and this app plus"
+    ok "the OS and a browser already use about ${OVERHEAD_GB} GB of your ${RAM_GB} GB."
+    ok "Remove the OLLAMA_MODEL line from .env to let this script choose one that fits."
+  fi
 else
-  MODEL="llama3.2:1b"; MODEL_SIZE="1.3 GB"
+  if [ "$RAM_GB" -ge 15 ]; then MODEL="llama3.2:3b"; else MODEL="llama3.2:1b"; fi
+  ok "${RAM_GB} GB of memory on this machine, so: $MODEL"
+  if [ "$RAM_GB" -lt 8 ] && [ "$RAM_GB" -gt 0 ]; then
+    ok "That is tight even for this model. Close what you can while the app runs."
+  fi
 fi
-ok "${RAM_GB} GB of memory on this machine, so: $MODEL"
-[ "$RAM_GB" -lt 8 ] && [ "$RAM_GB" -gt 0 ] &&
-  ok "That is tight even for this model. Close what you can while the app runs."
 
 if ! ollama list 2>/dev/null | grep -q "$MODEL"; then
-  ok "Downloading $MODEL (about $MODEL_SIZE, one time)..."
+  SIZE="$(model_download "$MODEL")"
+  ok "Downloading $MODEL${SIZE:+ (about $SIZE, one time)}..."
   ollama pull "$MODEL" || die "Model download failed. Check your connection and re-run."
 fi
 
 # The backend reads OLLAMA_MODEL from .env and has its own default, so a model
-# pulled here without being written down is a model that gets downloaded and
-# then not used. An existing setting is left alone: it is either a deliberate
-# choice or this line from an earlier run.
-if ! grep -qE '^[[:space:]]*OLLAMA_MODEL[[:space:]]*=' "$ROOT/.env" 2>/dev/null; then
+# pulled here without being written down is one that gets downloaded and then
+# not used.
+if [ -z "$PINNED" ]; then
   printf 'OLLAMA_MODEL=%s\n' "$MODEL" >> "$ROOT/.env"
   ok "Wrote OLLAMA_MODEL=$MODEL to .env"
 fi
