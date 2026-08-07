@@ -23,57 +23,6 @@ $Backend = Join-Path $Root "backend"
 $Web = Join-Path $Root "web"
 $Venv = Join-Path $Backend ".venv\Scripts\python.exe"
 
-<#
-  Which model this laptop can actually hold.
-
-  The download size is not the number that matters. This app runs the model
-  with a 16k context, which roughly doubles it. Measured with `ollama ps`, on
-  CPU:
-
-      llama3.2:3b   2.0 GB download   3.9 GB resident
-      llama3.2:1b   1.3 GB download   1.9 GB resident
-
-  And the model is not the only thing running. Before it there is already
-  around 5 GB in use: Windows itself, this app's Python backend (which loads a
-  torch embedding model), the web server, and a browser with the app open. On
-  top of that the person is using their laptop for other things.
-
-  So 3b wants about 9 GB before its owner opens anything of their own, which is
-  why it took 8 GB machines down rather than merely running slowly.
-
-  The cut is at 15 rather than 16 on purpose. Windows reserves some memory for
-  hardware and reports the rest, so a 16 GB laptop says 15.7 and a `-ge 16`
-  test would quietly send every one of them to the smaller model.
-
-  A weaker model writes a worse resume. A laptop that runs out of memory writes
-  no resume and frightens the person using it.
-#>
-$Models = @{
-    "llama3.2:1b" = @{ Download = "1.3 GB"; Memory = 1.9 }
-    "llama3.2:3b" = @{ Download = "2 GB"; Memory = 3.9 }
-    "llama3.1:8b" = @{ Download = "4.7 GB"; Memory = 9.0 }
-}
-# What the OS, this app's backend, the web server and a browser are already
-# holding before the model loads.
-$OverheadGB = 5
-
-$RamGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
-
-# A model named in .env wins. That is either a deliberate choice or this
-# script's own line from a previous run, and choosing again over the top of it
-# would download a model the backend is not going to load. The old
-# .env.example shipped OLLAMA_MODEL uncommented, so there are people carrying
-# a pinned 3b on a laptop that cannot hold it; they get told rather than
-# quietly overruled.
-$Model = Get-PinnedModel
-if ($Model) {
-    $Pinned = $true
-} elseif ($RamGB -ge 15) {
-    $Model = "llama3.2:3b"
-} else {
-    $Model = "llama3.2:1b"
-}
-
 function Say($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 
@@ -272,6 +221,64 @@ catch {
             exit 1
         }
     }
+}
+
+<#
+  Which model this laptop can actually hold.
+
+  Chosen here rather than beside the other variables at the top of the file,
+  because it calls a function. PowerShell reads a script in order and a call
+  above its own definition is not an error until it runs, at which point it is
+  "The term 'Get-PinnedModel' is not recognized" on the first line of output.
+  Which is exactly what shipped, and what a parse check does not catch.
+
+  The download size is not the number that matters. This app runs the model
+  with a 16k context, which roughly doubles it. Measured with `ollama ps`, on
+  CPU:
+
+      llama3.2:3b   2.0 GB download   3.9 GB resident
+      llama3.2:1b   1.3 GB download   1.9 GB resident
+
+  And the model is not the only thing running. Before it there is already
+  around 5 GB in use: Windows itself, this app's Python backend (which loads a
+  torch embedding model), the web server, and a browser with the app open. On
+  top of that the person is using their laptop for other things.
+
+  So 3b wants about 9 GB before its owner opens anything of their own, which is
+  why it took 8 GB machines down rather than merely running slowly.
+
+  The cut is at 15 rather than 16 on purpose. Windows reserves some memory for
+  hardware and reports the rest, so a 16 GB laptop says 15.7 and a `-ge 16`
+  test would quietly send every one of them to the smaller model.
+
+  A weaker model writes a worse resume. A laptop that runs out of memory writes
+  no resume and frightens the person using it.
+#>
+$Models = @{
+    "llama3.2:1b" = @{ Download = "1.3 GB"; Memory = 1.9 }
+    "llama3.2:3b" = @{ Download = "2 GB"; Memory = 3.9 }
+    "llama3.1:8b" = @{ Download = "4.7 GB"; Memory = 9.0 }
+}
+# What the OS, this app's backend, the web server and a browser are already
+# holding before the model loads.
+$OverheadGB = 5
+
+$RamGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+
+# A model named in .env wins. That is either a deliberate choice or this
+# script's own line from a previous run, and choosing again over the top of it
+# would download a model the backend is not going to load. The old
+# .env.example shipped OLLAMA_MODEL uncommented, so there are people carrying
+# a pinned 3b on a laptop that cannot hold it; they get told rather than
+# quietly overruled.
+$Pinned = $false
+$Model = Get-PinnedModel
+if ($Model) {
+    $Pinned = $true
+} elseif ($RamGB -ge 15) {
+    $Model = "llama3.2:3b"
+} else {
+    $Model = "llama3.2:1b"
 }
 
 $needs = $Models[$Model].Memory

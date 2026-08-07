@@ -73,10 +73,7 @@ def generate_json(
             "num_ctx": CONTEXT_TOKENS,
         },
     }
-    resp = httpx.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=timeout)
-    resp.raise_for_status()
-    content = resp.json()["message"]["content"]
-    return json.loads(content)
+    return json.loads(_chat(payload, timeout))
 
 
 def generate_text(
@@ -101,6 +98,37 @@ def generate_text(
             "num_ctx": CONTEXT_TOKENS,
         },
     }
-    resp = httpx.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=timeout)
+    return _chat(payload, timeout)
+
+
+def _chat(payload: dict, timeout: float | None) -> str:
+    """The one HTTP call, and the two ways it fails that are not bugs.
+
+    Both of these used to reach the user as the raw httpx line, which for a
+    missing model reads:
+
+        Client error '404 Not Found' for url 'http://localhost:11434/api/chat'
+        For more information check: https://developer.mozilla.org/...
+
+    That is a link to a page about the number 404. It says nothing about which
+    model is missing or that one command fixes it, and it is the first thing
+    someone sees when their setup did not finish. Both cases are ordinary and
+    recoverable, so they say what happened and what to type.
+    """
+    try:
+        resp = httpx.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=timeout)
+    except httpx.ConnectError as e:
+        raise RuntimeError(
+            f"Could not reach Ollama at {settings.ollama_url}. "
+            "It may not be running - start it with:  ollama serve"
+        ) from e
+
+    if resp.status_code == 404:
+        # Ollama answers 404 for a model it does not have, which is the normal
+        # state of a machine where setup stopped early.
+        raise RuntimeError(
+            f"The language model '{settings.ollama_model}' is not installed. "
+            f"Get it with:  ollama pull {settings.ollama_model}"
+        )
     resp.raise_for_status()
     return resp.json()["message"]["content"]
