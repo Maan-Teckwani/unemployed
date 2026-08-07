@@ -14,7 +14,39 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND="$ROOT/backend"
 WEB="$ROOT/web"
 VENV="$BACKEND/.venv/bin/python"
-MODEL="llama3.2:3b"
+
+# Which model this machine can actually hold.
+#
+# The download size is not the number that matters. This app runs the model
+# with a 16k context, which roughly doubles it. Measured with `ollama ps`, on
+# CPU:
+#
+#     llama3.2:3b   2.0 GB download   3.9 GB resident
+#     llama3.2:1b   1.3 GB download   1.9 GB resident
+#
+# And the model is not the only thing running. Before it there is already
+# around 5 GB in use: the OS, this app's Python backend (which loads a torch
+# embedding model), the web server, and a browser with the app open. On top of
+# that the person is using their machine for other things.
+#
+# So 3b wants about 9 GB before its owner opens anything of their own, which is
+# why it took 8 GB machines down rather than merely running slowly.
+#
+# The cut is at 15 rather than 16 because a machine reserves some memory for
+# hardware and reports the rest, so a 16 GB laptop says 15.7 and a `>= 16` test
+# would quietly send every one of them to the smaller model.
+#
+# When the amount cannot be read, the small model wins. Being slightly worse is
+# recoverable; running the machine out of memory is not.
+total_ram_gb() {
+  if [ -r /proc/meminfo ]; then
+    awk '/^MemTotal:/ { printf "%d", $2 / 1048576 }' /proc/meminfo
+  elif have sysctl; then
+    echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
+  else
+    echo 0
+  fi
+}
 
 say() { printf "\n==> %s\n" "$1"; }
 ok() { printf "    %s\n" "$1"; }
@@ -117,9 +149,28 @@ if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
   done
 fi
 
+RAM_GB="$(total_ram_gb)"
+if [ "$RAM_GB" -ge 15 ]; then
+  MODEL="llama3.2:3b"; MODEL_SIZE="2 GB"
+else
+  MODEL="llama3.2:1b"; MODEL_SIZE="1.3 GB"
+fi
+ok "${RAM_GB} GB of memory on this machine, so: $MODEL"
+[ "$RAM_GB" -lt 8 ] && [ "$RAM_GB" -gt 0 ] &&
+  ok "That is tight even for this model. Close what you can while the app runs."
+
 if ! ollama list 2>/dev/null | grep -q "$MODEL"; then
-  ok "Downloading $MODEL (about 2 GB, one time)..."
+  ok "Downloading $MODEL (about $MODEL_SIZE, one time)..."
   ollama pull "$MODEL" || die "Model download failed. Check your connection and re-run."
+fi
+
+# The backend reads OLLAMA_MODEL from .env and has its own default, so a model
+# pulled here without being written down is a model that gets downloaded and
+# then not used. An existing setting is left alone: it is either a deliberate
+# choice or this line from an earlier run.
+if ! grep -qE '^[[:space:]]*OLLAMA_MODEL[[:space:]]*=' "$ROOT/.env" 2>/dev/null; then
+  printf 'OLLAMA_MODEL=%s\n' "$MODEL" >> "$ROOT/.env"
+  ok "Wrote OLLAMA_MODEL=$MODEL to .env"
 fi
 ok "$MODEL ready"
 

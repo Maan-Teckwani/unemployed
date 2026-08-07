@@ -93,10 +93,13 @@ That's the whole setup. The script downloads the model, builds the virtual
 environment, installs both dependency trees, creates the database, launches the
 backend and frontend, and opens the app.
 
-First run takes about ten minutes — PyTorch and a 2 GB model. **Run the exact
-same command every time after**: every step checks before it acts, so later
-runs skip straight to starting the app. There is nothing else to remember, and
-no `.env` file to write.
+First run takes about ten minutes — PyTorch and a language model. The script
+measures the memory on your machine and picks a model that fits: `llama3.2:1b`
+under 15 GB of RAM, `llama3.2:3b` at 15 GB and up. That matters more than the
+download size suggests, because the model needs roughly double its download
+while running and about 5 GB is already spoken for by the OS, this app and a
+browser. **Run the exact same command every time after**: every step checks
+before it acts, so later runs skip straight to starting the app.
 
 Open **http://localhost:3000**.
 
@@ -104,7 +107,7 @@ Open **http://localhost:3000**.
 <summary>Running it by hand instead</summary>
 
 The script is only doing this, and nothing is stopping you doing it yourself.
-Once:
+Once — `llama3.2:1b` instead if the machine has less than 15 GB of memory:
 ```bash
 ollama pull llama3.2:3b
 ```
@@ -195,11 +198,11 @@ Any Ollama model works. Bigger models write better resume bullets but are slower
 ```bash
 ollama pull llama3.1:8b
 ```
-Then copy `.env.example` to `.env` at the repo root, set
-`OLLAMA_MODEL=llama3.1:8b`, and restart the backend. `llama3.2:3b` is the
-default because it runs comfortably on 8 GB of RAM; with 16 GB or more,
-`llama3.1:8b` writes noticeably better resume bullets. Whatever you set has to
-show up in `ollama list`.
+Then set `OLLAMA_MODEL=llama3.1:8b` in `.env` at the repo root and restart the
+backend. Setting it yourself also stops the script choosing for you, which is
+the point, so be sure the machine has the memory: an 8b model is about 9 GB
+while running and wants 32 GB to sit alongside everything else. Whatever you
+set has to show up in `ollama list`.
 
 On the all-in-Docker path the model lives in the container instead, so pull it
 there — `docker exec jobsearch-ollama ollama pull llama3.1:8b`. That container
@@ -244,7 +247,7 @@ your live data. `0 filter leak(s)` means nothing is slipping past the filters.
 | Backend | FastAPI · SQLAlchemy · Alembic |
 | Database | SQLite (one file, `data/jobsearch.db`) |
 | Embeddings | `bge-small-en-v1.5` (384-dim, local) |
-| LLM | Ollama (`llama3.2:3b` by default) |
+| LLM | Ollama (`llama3.2:3b`, or `llama3.2:1b` under 15 GB of RAM) |
 | Frontend | Next.js · Tailwind · shadcn/ui |
 
 **Where AI is used:** extracting requirements from job descriptions, embedding

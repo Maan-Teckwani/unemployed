@@ -22,7 +22,40 @@ $Root = $PSScriptRoot
 $Backend = Join-Path $Root "backend"
 $Web = Join-Path $Root "web"
 $Venv = Join-Path $Backend ".venv\Scripts\python.exe"
-$Model = "llama3.2:3b"
+
+<#
+  Which model this laptop can actually hold.
+
+  The download size is not the number that matters. This app runs the model
+  with a 16k context, which roughly doubles it. Measured with `ollama ps`, on
+  CPU:
+
+      llama3.2:3b   2.0 GB download   3.9 GB resident
+      llama3.2:1b   1.3 GB download   1.9 GB resident
+
+  And the model is not the only thing running. Before it there is already
+  around 5 GB in use: Windows itself, this app's Python backend (which loads a
+  torch embedding model), the web server, and a browser with the app open. On
+  top of that the person is using their laptop for other things.
+
+  So 3b wants about 9 GB before its owner opens anything of their own, which is
+  why it took 8 GB machines down rather than merely running slowly.
+
+  The cut is at 15 rather than 16 on purpose. Windows reserves some memory for
+  hardware and reports the rest, so a 16 GB laptop says 15.7 and a `-ge 16`
+  test would quietly send every one of them to the smaller model.
+
+  A weaker model writes a worse resume. A laptop that runs out of memory writes
+  no resume and frightens the person using it.
+#>
+$RamGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+if ($RamGB -ge 15) {
+    $Model = "llama3.2:3b"
+    $ModelSize = "2 GB"
+} else {
+    $Model = "llama3.2:1b"
+    $ModelSize = "1.3 GB"
+}
 
 function Say($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
@@ -131,6 +164,29 @@ function Probe($block) {
     finally { $ErrorActionPreference = $previous }
 }
 
+function Save-ModelChoice($model) {
+    <#
+      Tell the backend which model was chosen.
+
+      This script pulls a model and backend/app/config.py has its own default,
+      and until now they were two separate copies of the same string. Changing
+      one here without writing it down would download the right model and then
+      run the wrong one, which fails as a connection error naming a model the
+      user never asked for.
+
+      An existing OLLAMA_MODEL is never overwritten. That is either a choice the
+      user made deliberately, or this line from an earlier run, and neither
+      should be reversed because they closed some tabs before running the script.
+    #>
+    $envFile = Join-Path $Root ".env"
+    if ((Test-Path $envFile) -and
+        (Select-String -Path $envFile -Pattern '^\s*OLLAMA_MODEL\s*=' -Quiet)) {
+        return
+    }
+    Add-Content -Path $envFile -Value "OLLAMA_MODEL=$model"
+    Ok "Wrote OLLAMA_MODEL=$model to .env"
+}
+
 function Find-Python {
     <#
       The name of an interpreter that actually runs and is new enough, or null.
@@ -197,15 +253,21 @@ catch {
     }
 }
 
+Ok "$RamGB GB of memory on this machine, so: $Model"
+if ($RamGB -lt 8) {
+    Ok "That is tight even for this model. Close what you can while the app runs."
+}
+
 $models = Probe { ollama list }
 if ($models -notmatch [regex]::Escape($Model)) {
-    Ok "Downloading $Model (about 2 GB, one time)..."
+    Ok "Downloading $Model (about $ModelSize, one time)..."
     ollama pull $Model
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nModel download failed. Check your connection and re-run." -ForegroundColor Red
         exit 1
     }
 }
+Save-ModelChoice $Model
 Ok "$Model ready"
 
 # --- 3. Backend -------------------------------------------------------------
