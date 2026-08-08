@@ -70,6 +70,8 @@ conclude the project is broken.
 - **Support an existing native Ollama** — many people already have one. Detect
   it on `11434` and offer to use it rather than pulling a second copy of the same
   model into a container. (The current 11435 port choice already anticipates this.)
+  The local `run.sh` flow now probes `11434`, attempts a stale-process cleanup,
+  and prints concrete recovery steps when bind errors occur.
 - **State the time cost honestly up front**: scoring 100 jobs takes ~40 minutes on
   CPU. Surprise is worse than slowness.
 
