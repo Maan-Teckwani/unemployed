@@ -60,7 +60,13 @@ def enrich(
     chunks = list(db.scalars(select(KBChunk)))
     candidate = CandidateIndex(chunks)
     if candidate.is_empty:
-        raise SystemExit("Knowledge base is empty — add chunks before matching.")
+        # A plain error, not SystemExit: this runs inside the API's background
+        # thread as often as it does a CLI, and SystemExit is a BaseException
+        # that every `except Exception` in the app lets through.
+        raise RuntimeError(
+            "Your Knowledge Base is empty — add your experience there first, "
+            "then run this again."
+        )
 
     preferences = db.scalar(select(Preferences))
     families = set(getattr(preferences, "role_families", None) or DEFAULT_ROLE_FAMILIES)

@@ -2,10 +2,25 @@
 keep working, while the UI passes a callback to drive its progress bar."""
 import inspect
 
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from app.api import pipeline
 from app.api.pipeline import KINDS, LABELS
+from app.db.models import PipelineRun
+from app.db.session import Base
 from app.ingestion.enrich import enrich
 from app.ingestion.pipeline import run_ingestion
+
+
+@pytest.fixture
+def sessions():
+    """A real (in-memory) database, because what is worth testing here is the row
+    a crashed run leaves behind — a fake session would assert nothing about it."""
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
 def test_progress_callback_is_optional_on_both_entry_points() -> None:
@@ -42,3 +57,50 @@ def test_a_fetch_scores_what_it_fetched(monkeypatch) -> None:
 
     assert calls == [("fetch",), ("score", pipeline.SCORE_DEPTH)]
     assert pipeline.SCORE_DEPTH == 25, "deeper than this and a fetch stops feeling quick"
+
+
+@pytest.mark.parametrize(
+    "boom",
+    [
+        RuntimeError("kb empty"),
+        SystemExit("kb empty"),  # not an Exception — the original escape hatch
+        KeyboardInterrupt(),
+    ],
+    ids=["exception", "base-exception", "interrupt"],
+)
+def test_a_crashed_run_is_always_marked_failed(sessions, monkeypatch, boom) -> None:
+    """The `running` row IS the lock, so a step that dies without writing a
+    terminal status disables every run button until the server restarts.
+
+    This is not hypothetical: `enrich` used to raise `SystemExit` on an empty
+    knowledge base, which is a `BaseException`, so it sailed past the `except
+    Exception` here, was silently swallowed by the thread, and stranded the row
+    at `running` forever. The handler must survive anything a step can raise.
+    """
+    monkeypatch.setattr(pipeline, "SessionLocal", sessions)
+    monkeypatch.setattr(
+        pipeline, "ingest_and_score", lambda db, progress: (_ for _ in ()).throw(boom)
+    )
+
+    with sessions() as db:
+        run = PipelineRun(kind="ingest", message=LABELS["ingest"], total=0)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+
+    pipeline._execute(run_id, "ingest")
+
+    with sessions() as db:
+        row = db.get(PipelineRun, run_id)
+        assert row.status == "failed", "the lock is still held; every button stays dead"
+        assert row.finished_at is not None
+        assert row.error, "a failed run with no reason is a dead end for the user"
+
+
+def test_an_empty_knowledge_base_is_a_catchable_error(sessions) -> None:
+    """`SystemExit` here read like "stop the CLI", but `enrich` is a library
+    function the API and the scheduler both call — and neither can catch it."""
+    with sessions() as db, pytest.raises(RuntimeError) as caught:
+        enrich(db)
+
+    assert "Knowledge Base is empty" in str(caught.value)

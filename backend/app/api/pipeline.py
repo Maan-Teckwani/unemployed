@@ -119,9 +119,18 @@ def _execute(run_id: int, kind: str) -> None:
                 _discover(db, progress)
 
             run.status, run.message = "done", "Finished"
-        except Exception as e:  # noqa: BLE001 - the UI needs the reason, not a stack trace
+        except BaseException as e:  # noqa: BLE001 - see below
+            # BaseException, not Exception. This row is the lock, so a step that
+            # dies without writing a terminal status here disables every run
+            # button until someone restarts the server. `SystemExit` already did
+            # exactly that once, and a thread swallows it without even a
+            # traceback — so the handler cannot be selective about what it
+            # survives. It records the reason and lets the thread end.
             log.exception("pipeline run %s (%s) failed", run_id, kind)
-            run.status, run.error = "failed", str(e)[:2000]
+            # The step may have died mid-transaction; without this the commit
+            # below would raise too, and the lock would be stuck all the same.
+            db.rollback()
+            run.status, run.error = "failed", str(e)[:2000] or e.__class__.__name__
             run.message = "Failed"
         finally:
             run.finished_at = datetime.now(UTC)
