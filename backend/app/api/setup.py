@@ -47,22 +47,14 @@ def status(db: Session = Depends(get_db)) -> dict:
         )
         or 0
     )
-    # The two numbers the pile on the home page is drawn from. They live here,
-    # on a call the nav already makes after every navigation, so showing the
-    # count on every page costs no extra request.
+    # The number the pile on the home page is drawn from. It lives here, on a
+    # call the nav already makes after every navigation, so showing the count on
+    # every page costs no extra request.
     pile = (
         db.scalar(
             select(func.count())
             .select_from(Application)
             .where(Application.applied_at.is_not(None))
-        )
-        or 0
-    )
-    resume_ready = (
-        db.scalar(
-            select(func.count())
-            .select_from(Application)
-            .where(Application.status == "resume_ready")
         )
         or 0
     )
@@ -109,6 +101,5 @@ def status(db: Session = Depends(get_db)) -> dict:
             "rankable": rankable,
             "applied": applied,
             "pile": pile,
-            "resume_ready": resume_ready,
         },
     }

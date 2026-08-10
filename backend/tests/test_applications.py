@@ -53,14 +53,44 @@ def test_outreach_alone_also_counts_as_sent(db) -> None:
     assert db.get(Application, 1).applied_at is not None
 
 
-def test_a_rejection_does_not_un_send_the_application(db) -> None:
-    """The whole reason this column exists. Closing a job must not shrink the pile."""
+@pytest.mark.parametrize("ending", ["closed", "rejected"])
+def test_a_rejection_does_not_un_send_the_application(db, ending) -> None:
+    """The whole reason this column exists. Neither being turned down nor giving
+    up on a job may shrink the pile — the application was still sent."""
     set_status(db, "applied")
     stamped = db.get(Application, 1).applied_at
 
-    set_status(db, "closed")
+    set_status(db, ending)
 
     assert db.get(Application, 1).applied_at == stamped
+
+
+@pytest.mark.parametrize("status", ["test", "interview", "offer", "rejected"])
+def test_you_cannot_reach_the_funnel_without_having_applied(db, status) -> None:
+    """Going straight to "interview" on a job never marked applied still means
+    an application went out, so it earns its sheet and its date."""
+    set_status(db, status)
+    assert db.get(Application, 1).applied_at is not None
+
+
+def test_moving_along_the_funnel_keeps_the_original_date(db) -> None:
+    """The sheet changes colour as you progress; it does not become a new one."""
+    set_status(db, "applied")
+    first = db.get(Application, 1).applied_at
+
+    for status in ("test", "interview", "offer"):
+        set_status(db, status)
+        assert db.get(Application, 1).applied_at == first
+
+    assert applications.stats(db=db)["pile"] == 1, "one job is one application"
+
+
+def test_closing_a_job_you_never_sent_stamps_nothing(db) -> None:
+    """Deciding against a job is not an application. The pile counts what left."""
+    set_status(db, "closed")
+
+    assert db.get(Application, 1).applied_at is None
+    assert applications.stats(db=db)["pile"] == 0
 
 
 def test_applying_twice_is_still_one_application(db) -> None:
@@ -100,10 +130,17 @@ def test_the_pile_counts_closed_jobs_too(db) -> None:
     assert setup.status(db=db)["counts"]["pile"] == 2
 
 
-def test_setup_counts_resumes_waiting_to_be_sent(db) -> None:
-    """These are the outlined cards on the pile — work done, not yet sent."""
+def test_a_prepared_resume_is_not_an_application(db) -> None:
+    """Generated resumes expire minutes after they are made, so "resume ready"
+    cannot mean there is a resume waiting — only that nothing has been sent."""
     set_status(db, "resume_ready")
 
-    counts = setup.status(db=db)["counts"]
-    assert counts["resume_ready"] == 1
-    assert counts["pile"] == 0
+    assert db.get(Application, 1).applied_at is None
+    assert setup.status(db=db)["counts"]["pile"] == 0
+
+
+def test_every_funnel_status_is_accepted(db) -> None:
+    """The picker offers these, so the API has to take them."""
+    for status in applications.STATUSES:
+        set_status(db, status)
+        assert db.get(Application, 1).status == status

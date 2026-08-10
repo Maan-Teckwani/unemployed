@@ -16,12 +16,29 @@ from app.schemas import ApplicationIn
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-STATUSES = ("todo", "resume_ready", "applied", "outreach_sent", "closed")
+# The funnel, in order. Everything from "applied" onward is a place an
+# application can actually be once it has left your hands, which is what the
+# pile on the home page draws.
+STATUSES = (
+    "todo",
+    "resume_ready",
+    "applied",
+    "outreach_sent",
+    "test",
+    "interview",
+    "offer",
+    "rejected",
+    "closed",
+)
 
-# The statuses that mean "this went out". Both count, because applying and
-# reaching out are two ways of having sent the same application, and a job that
-# went straight to outreach without a form submission is still work done.
-SENT = ("applied", "outreach_sent")
+# The statuses that mean "this went out".
+#
+# All of them, not just "applied": you cannot be interviewing for a job you did
+# not apply to, and a job that went straight to outreach without a form
+# submission is still work done. `closed` is the one exception — it also covers
+# deciding against a job you never sent anything for, so it stamps nothing on
+# its own and simply keeps whatever date the row already had.
+SENT = ("applied", "outreach_sent", "test", "interview", "offer", "rejected")
 
 
 @router.get("")

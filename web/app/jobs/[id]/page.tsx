@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState, ViewTransition } from "react";
 import { toast } from "sonner";
 import {
   api,
@@ -11,18 +11,20 @@ import {
   type Status,
 } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
+import { recall } from "@/lib/job-cache";
 import { scoreTone } from "@/lib/score";
 import { FitBreakdown } from "@/components/matches/fit-breakdown";
+import { JobDetailSkeleton } from "@/components/skeletons/job-detail-skeleton";
 import { OutreachPanel } from "@/components/outreach/outreach-panel";
 import { ProjectPanel } from "@/components/projects/project-panel";
 import { LatexPanel } from "@/components/resume/latex-panel";
 import { ResumeEditor } from "@/components/resume/resume-editor";
+import { useStack } from "@/components/stack/stack-provider";
 import { StatusSelect } from "@/components/status-select";
 import { Working } from "@/components/working";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
 
 export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -37,6 +39,8 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const [editing, setEditing] = useState(false);
   const [hasTemplate, setHasTemplate] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const { model } = useStack();
+  const inPile = model.sheets.some((s) => s.jobId === jobId);
 
   const load = useCallback(async () => {
     try {
@@ -87,29 +91,43 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   if (failed)
     return (
       <div className="max-w-prose space-y-4">
-        <h1 className="text-2xl font-semibold">This job is not here</h1>
+        <h1 className="page-title">This job is not here</h1>
         <p className="text-muted-foreground text-sm">
           {failed.includes("404")
             ? "It was removed the last time the boards were fetched — a company takes a posting down and the next fetch marks it gone. The list on Apply today is current."
             : `Could not load it: ${failed}`}
         </p>
-        <Link
-          href="/today"
-          className={buttonVariants({ variant: "outline", size: "sm" })}
-        >
-          Back to Apply today
-        </Link>
+        {/* Arriving from a sheet in the pile is the common way to land here: a
+            posting you applied to weeks ago is exactly the kind that gets taken
+            down. The count must not look like a mistake. */}
+        {inPile && failed.includes("404") && (
+          <p className="text-muted-foreground text-sm">
+            You applied to this one, and it still counts. A posting coming down
+            does not un-send an application, so it keeps its place in your pile.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/today"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Back to Apply today
+          </Link>
+          {inPile && (
+            <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              Back to your pile
+            </Link>
+          )}
+        </div>
       </div>
     );
 
-  if (!job)
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-2/3" />
-        <Skeleton className="h-4 w-1/3" />
-        <SkeletonRows rows={3} />
-      </div>
-    );
+  // What the ranked list already knew, so the header is on screen in the first
+  // frame instead of behind a skeleton — and so the title exists at the moment
+  // of the transition, which is what lets it morph rather than cut.
+  const known = job ?? recall(jobId);
+
+  if (!known) return <JobDetailSkeleton />;
 
   const ats = resume?.ats_report;
   const sections = ["Experience", "Projects", "Achievements"];
@@ -117,14 +135,19 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/today" className="text-sm text-muted-foreground underline">
+        <Link
+          href="/today"
+          className="meta normal-case tracking-normal underline underline-offset-4 hover:text-foreground"
+        >
           ← Back to Apply today
         </Link>
-        <div className="flex items-center gap-3 mt-2">
-          <h1 className="text-2xl font-semibold">{job.title}</h1>
+        <div className="flex items-center gap-3 mt-2 flex-wrap">
+          <ViewTransition name={`job-${jobId}`}>
+            <h1 className="page-title">{known.title}</h1>
+          </ViewTransition>
           {match && (
             <span
-              className={`text-2xl font-semibold tabular-nums ${scoreTone(match.score)}`}
+              className={`data text-display-md ${scoreTone(match.score)}`}
               title="Fit score out of 100"
             >
               {Math.round(match.score * 100)}
@@ -142,9 +165,10 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             <Badge variant="outline">filtered: {match.filter_reason}</Badge>
           )}
         </div>
-        <p className="text-muted-foreground mt-1">
-          {job.company} · {job.location || "—"} · {job.source}
-          {job.remote && <Badge variant="secondary" className="ml-2">remote</Badge>}
+        <p className="meta mt-1.5 normal-case tracking-normal">
+          {known.company} · {known.location || "—"}
+          {job && ` · ${job.source}`}
+          {known.remote && <Badge variant="secondary" className="ml-2">remote</Badge>}
         </p>
       </div>
 
@@ -175,13 +199,22 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             {editing ? "Close editor" : "Edit"}
           </Button>
         )}
-        <Button
-          variant="outline"
-          nativeButton={false}
-          render={<a href={job.apply_url} target="_blank" rel="noopener noreferrer" />}
-        >
-          Open application
-        </Button>
+        {/* The apply link is the one thing the cached summary does not carry,
+            so until the full record lands this is a disabled placeholder rather
+            than a link to nowhere. */}
+        {job ? (
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<a href={job.apply_url} target="_blank" rel="noopener noreferrer" />}
+          >
+            Open application
+          </Button>
+        ) : (
+          <Button variant="outline" disabled>
+            Open application
+          </Button>
+        )}
         <StatusSelect jobId={jobId} value={status} onChange={setStatus} />
       </div>
 
@@ -297,15 +330,19 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       <Separator />
       <OutreachPanel jobId={jobId} />
 
-      <Separator />
-      <details>
-        <summary className="cursor-pointer text-sm font-medium">
-          Job description
-        </summary>
-        <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">
-          {job.description.slice(0, 4000)}
-        </pre>
-      </details>
+      {job && (
+        <>
+          <Separator />
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              Job description
+            </summary>
+            <pre className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
+              {job.description.slice(0, 4000)}
+            </pre>
+          </details>
+        </>
+      )}
     </div>
   );
 }

@@ -47,6 +47,62 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* The pile. Paper is not --card: a card is a surface you put things on, and
+     these are sheets seen edge-on, stacked. They need their own lightness and,
+     more importantly, their own edge — --border in dark is white at 10%, which
+     against --card is about 1.1:1, and two hundred sheets drawn in it are one
+     grey rectangle. */
+  --color-paper: var(--paper);
+  --color-paper-edge: var(--paper-edge);
+  --color-paper-shade: var(--paper-shade);
+  --color-milestone: var(--milestone);
+  --color-surface-raised: var(--surface-raised);
+
+  /* How far each application got, as colour.
+     This is the second deliberate exception to an otherwise greyscale app —
+     the first is the fit score in lib/score.ts. It earns the exception because
+     the pile is the one place where a hundred things have to be told apart at
+     a glance, and position cannot say which is which.
+     Low chroma on purpose: these sit next to each other in a dense stack, and
+     saturated bands would read as a chart rather than as paper. Colour is never
+     the only carrier — every state is also in the legend, the tooltip and the
+     text under the pile. */
+  --color-state-sent: var(--state-sent);
+  --color-state-test: var(--state-test);
+  --color-state-interview: var(--state-interview);
+  --color-state-offer: var(--state-offer);
+  --color-state-rejected: var(--state-rejected);
+
+  /* Display — Instrument Serif, 400 only. It thins out badly below ~1.75rem
+     and disappears entirely on dark, so the scale starts there and the font is
+     used for page titles and the one big number, nothing else. */
+  --text-display-xl: 3.75rem;
+  --text-display-xl--line-height: 0.95;
+  --text-display-xl--letter-spacing: -0.02em;
+  --text-display-lg: 2.25rem;
+  --text-display-lg--line-height: 1.05;
+  --text-display-lg--letter-spacing: -0.015em;
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 1.15;
+  --text-display-md--letter-spacing: -0.01em;
+
+  /* Data — JetBrains Mono. Every number the eye has to compare down a column:
+     scores, counts, dates, sources. Monospace so they line up, and because the
+     wordmark is already mono, this reads as the same voice. */
+  --text-data-lg: 1.125rem;
+  --text-data-lg--line-height: 1.2;
+  --text-data-lg--letter-spacing: -0.02em;
+  --text-data: 0.8125rem;
+  --text-data--line-height: 1.3;
+  --text-data--letter-spacing: -0.01em;
+  --text-data-sm: 0.6875rem;
+  --text-data-sm--line-height: 1.25;
+
+  /* One easing for anything that settles like paper, and the wordmark's own
+     easing promoted out of the keyframe so motion elsewhere can borrow it. */
+  --ease-paper: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-strike: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 :root {
@@ -82,6 +138,16 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --paper: oklch(0.995 0 0);
+  --paper-edge: oklch(0.855 0 0);
+  --paper-shade: oklch(0.93 0 0);
+  --milestone: oklch(0.7 0 0);
+  --surface-raised: oklch(0.985 0 0);
+  --state-sent: oklch(0.72 0 0);
+  --state-test: oklch(0.7 0.12 75);
+  --state-interview: oklch(0.58 0.11 245);
+  --state-offer: oklch(0.6 0.13 150);
+  --state-rejected: oklch(0.68 0.07 25);
 }
 
 .dark {
@@ -103,19 +169,37 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Mirrored, not copied. These were identical to the light values, so the ramp
+     ran backwards on dark: chart-1 was the lightest in both, which on a 0.145
+     background is the loudest rather than the quietest. */
+  --chart-1: oklch(0.32 0 0);
+  --chart-2: oklch(0.44 0 0);
+  --chart-3: oklch(0.56 0 0);
+  --chart-4: oklch(0.68 0 0);
+  --chart-5: oklch(0.8 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  /* Was oklch(0.488 0.243 264.376) — a blue left behind by the shadcn default
+     palette, and the only chroma in an app that is otherwise deliberately
+     greyscale apart from --destructive and the score in lib/score.ts. */
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --paper: oklch(0.235 0 0);
+  --paper-edge: oklch(0.42 0 0);
+  --paper-shade: oklch(0.185 0 0);
+  --milestone: oklch(0.52 0 0);
+  --surface-raised: oklch(0.205 0 0);
+  /* Lifted, not the same values: these sit on oklch(0.145) instead of white,
+     and the light-mode versions would sink into it. */
+  --state-sent: oklch(0.6 0 0);
+  --state-test: oklch(0.78 0.12 75);
+  --state-interview: oklch(0.7 0.12 245);
+  --state-offer: oklch(0.74 0.14 150);
+  --state-rejected: oklch(0.62 0.08 25);
 }
 
 @layer base {
@@ -128,6 +212,32 @@
   html {
     @apply font-sans;
     font-size: 16px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Three classes, not a system.
+
+   The rest of this app styles with raw utilities and should keep doing that.
+   These three exist because they are the combinations that appear on every
+   route, and because they were the ones drifting: the ranked list used
+   `text-2xl font-semibold` for its title while the wall used `font-serif
+   text-3xl`, which is two answers to one question.
+   --------------------------------------------------------------------------- */
+@layer components {
+  .page-title {
+    @apply font-serif text-display-md text-balance;
+  }
+
+  /* Anything the eye compares down a column. tabular-nums is the whole point:
+     without it a score changing from 9 to 10 nudges the row. */
+  .data {
+    @apply font-mono tabular-nums tracking-tight;
+  }
+
+  /* The quiet label above or beside a thing — counts, sources, timestamps. */
+  .meta {
+    @apply font-mono text-data-sm uppercase tracking-wide text-muted-foreground;
   }
 }
 /* ---------------------------------------------------------------------------
@@ -210,6 +320,38 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Page transitions.
+
+   The header must not take part. It is the same header before and after, so
+   letting it cross-fade makes the one fixed thing on screen flicker while
+   everything else moves — the opposite of the continuity this is for.
+   --------------------------------------------------------------------------- */
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+
+::view-transition-group(.morph) {
+  animation-duration: 0.32s;
+  animation-timing-function: var(--ease-paper);
+}
+
+/* The pile settling after a card lands on it. */
+@keyframes card-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Motion is the joke, not the information — without it, land on the end state. */
 @media (prefers-reduced-motion: reduce) {
   .logo__strike,
@@ -226,5 +368,15 @@
   }
   .quip {
     animation: none;
+  }
+  /* Skeletons still need to read as "not the real thing", which the muted fill
+     already does. The pulse is what has to stop. */
+  .animate-pulse {
+    animation: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

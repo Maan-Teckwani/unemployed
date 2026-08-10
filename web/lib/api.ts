@@ -96,14 +96,39 @@ export type MatchWhy = {
   skipped?: string;
 };
 
+/**
+ * The funnel, in order. Everything from "applied" onward has left your hands,
+ * which is what the pile on the home page is made of.
+ */
 export const STATUSES = [
   "todo",
   "resume_ready",
   "applied",
   "outreach_sent",
+  "test",
+  "interview",
+  "offer",
+  "rejected",
   "closed",
 ] as const;
 export type Status = (typeof STATUSES)[number];
+
+/** One row of your own progress, joined to the job it belongs to. */
+export type ApplicationRow = {
+  job_id: number;
+  status: Status;
+  notes: string;
+  updated_at: string;
+  /**
+   * The first time this became an application that was sent. Stamped once by
+   * the backend and never moved, which is what lets a closed job keep its place
+   * in the pile — a rejection changes the status, not the fact that you applied.
+   * Null until it goes out.
+   */
+  applied_at: string | null;
+  title: string;
+  company: string;
+};
 
 export type Match = {
   job: Job;
@@ -385,6 +410,8 @@ export type SetupStatus = {
     scored: number;
     rankable: number;
     applied: number;
+    /** Everything ever sent, including jobs since rejected. Never falls. */
+    pile: number;
   };
 };
 
@@ -471,15 +498,13 @@ export const api = {
   ) => req<Resume>(`/resumes/${resumeId}`, { method: "PUT", body: JSON.stringify(body) }),
 
   setStatus: (jobId: number, status: Status, notes = "") =>
-    req<{ job_id: number; status: Status }>(`/applications/${jobId}`, {
-      method: "PUT",
-      body: JSON.stringify({ status, notes }),
-    }),
-  applicationStats: () => req<Record<Status, number>>("/applications/stats"),
-  listApplications: () =>
-    req<{ job_id: number; status: Status; title: string; company: string }[]>(
-      "/applications",
+    req<{ job_id: number; status: Status; applied_at: string | null }>(
+      `/applications/${jobId}`,
+      { method: "PUT", body: JSON.stringify({ status, notes }) },
     ),
+  applicationStats: () =>
+    req<Record<Status, number> & { pile: number }>("/applications/stats"),
+  listApplications: () => req<ApplicationRow[]>("/applications"),
 
   // Creates the job, then runs extraction + scoring inline (~30s).
   projectIdea: (jobId: number) => req<ProjectIdea | null>(`/projects/${jobId}`),
