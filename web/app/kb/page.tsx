@@ -6,7 +6,7 @@ import { api, type KBChunk } from "@/lib/api";
 import { AddItemForm } from "@/components/kb/add-item-form";
 import { ChunkList } from "@/components/kb/chunk-list";
 import { SemanticSearch } from "@/components/kb/semantic-search";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 export default function KBPage() {

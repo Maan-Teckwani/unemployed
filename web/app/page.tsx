@@ -6,7 +6,7 @@ import { api, type SetupStatus } from "@/lib/api";
 import { BoardStrip } from "@/components/board/board-strip";
 import { Logo } from "@/components/logo";
 import { PipelineRunner } from "@/components/pipeline/pipeline-runner";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 

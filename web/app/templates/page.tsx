@@ -127,7 +127,12 @@ export default function TemplatesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => api.setDefaultTemplate(t.id).then(refresh)}
+                  onClick={() =>
+                    api
+                      .setDefaultTemplate(t.id)
+                      .then(refresh)
+                      .catch((e) => toast.error(String(e)))
+                  }
                 >
                   Use this one
                 </Button>

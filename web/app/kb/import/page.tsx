@@ -92,7 +92,18 @@ export default function ImportPage() {
 
       while (current.status === "running") {
         await new Promise((r) => setTimeout(r, 1000));
-        current = await api.parseStatus(current.id);
+        try {
+          current = await api.parseStatus(current.id);
+        } catch (e) {
+          // A parse job lives in the backend's memory, not a table (see
+          // app/api/parse_jobs.py), so a restart loses it — and the backend runs
+          // under --reload, which restarts on every edit to it. "404 Not Found:
+          // parse job not found" is not something a user can act on; the actual
+          // situation is, and the recovery is one click.
+          throw String(e).includes("404")
+            ? new Error("The backend restarted while this was reading. Parse the files again.")
+            : e;
+        }
         setJob(current);
       }
 
