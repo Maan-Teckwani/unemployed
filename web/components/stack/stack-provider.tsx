@@ -14,6 +14,7 @@ import { DUR, EASE, gsap } from "@/lib/motion";
 import {
   buildStack,
   DEFAULT_TARGET,
+  isSameDay,
   nextMilestone,
   offsetX,
   rotation,
@@ -22,6 +23,8 @@ import {
   type State,
   stateOf,
 } from "@/lib/stack";
+
+const isToday = (d: Date) => isSameDay(d, new Date());
 
 /** Recount the legend after the pile changes. */
 function countStates(sheets: Sheet[]): Record<State, number> {
@@ -117,9 +120,23 @@ export function StackProvider({ children }: { children: React.ReactNode }) {
 
   const recordSent = useCallback(
     (jobId: number, status: Status, from: DOMRect | null) => {
+      // Taking a job back to "not sent" undoes a mis-click, so its sheet has to
+      // leave the pile — and leave it now, not after the refetch, or the number
+      // sits there wrong for half a second and reads as broken.
       if (!SENT.includes(status)) {
-        // Not a send, but it may have turned a job into a prepared resume or
-        // away from one, which changes the hollow sheets.
+        setModel((prev) => {
+          const sheet = prev.sheets.find((s) => s.jobId === jobId);
+          if (!sheet) return prev;
+          const sheets = prev.sheets.filter((s) => s.jobId !== jobId);
+          return {
+            ...prev,
+            sheets,
+            total: sheets.length,
+            today: isToday(sheet.appliedAt) ? Math.max(0, prev.today - 1) : prev.today,
+            byState: countStates(sheets),
+            nextMilestone: nextMilestone(sheets.length),
+          };
+        });
         refresh();
         return;
       }

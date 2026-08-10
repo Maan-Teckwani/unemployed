@@ -111,8 +111,9 @@ export function Stack() {
         ) : (
           <>
             Set a job&apos;s status as you hear back — Test, Interview, Offer — and its
-            sheet changes colour. Nothing ever leaves the pile: a rejection does not
-            un-send an application, so this only counts up.
+            sheet changes colour. Being rejected does not remove a sheet: you still
+            sent it. Marked one by mistake? Put it back to{" "}
+            <strong className="font-medium">To do</strong> and its sheet leaves.
           </>
         )}
       </p>

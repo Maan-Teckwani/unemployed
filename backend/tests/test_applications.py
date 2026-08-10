@@ -93,14 +93,31 @@ def test_closing_a_job_you_never_sent_stamps_nothing(db) -> None:
     assert applications.stats(db=db)["pile"] == 0
 
 
-def test_applying_twice_is_still_one_application(db) -> None:
-    set_status(db, "applied")
-    first = db.get(Application, 1).applied_at
+@pytest.mark.parametrize("undo", ["todo", "resume_ready"])
+def test_marking_a_job_applied_by_mistake_can_be_taken_back(db, undo) -> None:
+    """The one thing that removes a sheet from the pile.
 
+    Everything else about this column is "written once", so that a rejection
+    cannot shrink the pile. But a wrong selection has to be undoable, and moving
+    a job back to a not-sent status is the user saying they have not applied
+    after all — a correction, not an outcome.
+    """
+    set_status(db, "applied")
+    assert db.get(Application, 1).applied_at is not None
+
+    set_status(db, undo)
+
+    assert db.get(Application, 1).applied_at is None
+    assert applications.stats(db=db)["pile"] == 0
+
+
+def test_applying_again_after_taking_it_back_is_a_fresh_date(db) -> None:
+    set_status(db, "applied")
     set_status(db, "todo")
     set_status(db, "applied")
 
-    assert db.get(Application, 1).applied_at == first
+    assert db.get(Application, 1).applied_at is not None
+    assert applications.stats(db=db)["pile"] == 1, "still one job, one sheet"
 
 
 def test_both_responses_carry_the_date(db) -> None:
