@@ -10,6 +10,7 @@ import {
   type Resume,
   type Status,
 } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import { scoreTone } from "@/lib/score";
 import { FitBreakdown } from "@/components/matches/fit-breakdown";
 import { OutreachPanel } from "@/components/outreach/outreach-panel";
@@ -19,7 +20,7 @@ import { ResumeEditor } from "@/components/resume/resume-editor";
 import { StatusSelect } from "@/components/status-select";
 import { Working } from "@/components/working";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
 
@@ -35,6 +36,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const [status, setStatus] = useState<Status>("todo");
   const [editing, setEditing] = useState(false);
   const [hasTemplate, setHasTemplate] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -51,8 +53,14 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       setResume(r);
       setHasTemplate(templates.some((t) => t.is_default));
       setStatus(apps.find((a) => a.job_id === jobId)?.status ?? "todo");
-    } catch {
-      // Backend not reachable — leave empty.
+    } catch (e) {
+      // Only `getJob` can reach here — the other four swallow their own errors
+      // because a job with no score, no resume and no template is still a job
+      // worth showing. Recording the reason matters because this page renders a
+      // skeleton until `job` arrives: swallowed, a job that no longer exists
+      // left the skeleton up forever, which reads as a hang rather than as an
+      // answer. A stale link from Apply today is the normal way to get one.
+      setFailed(String(e));
     }
   }, [jobId]);
 
@@ -75,6 +83,24 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       setGenerating(false);
     }
   }
+
+  if (failed)
+    return (
+      <div className="max-w-prose space-y-4">
+        <h1 className="text-2xl font-semibold">This job is not here</h1>
+        <p className="text-muted-foreground text-sm">
+          {failed.includes("404")
+            ? "It was removed the last time the boards were fetched — a company takes a posting down and the next fetch marks it gone. The list on Apply today is current."
+            : `Could not load it: ${failed}`}
+        </p>
+        <Link
+          href="/today"
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          Back to Apply today
+        </Link>
+      </div>
+    );
 
   if (!job)
     return (
@@ -137,8 +163,9 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
         {resume && !resume.latex && (
           <Button
             variant="outline"
-            nativeButton={false}
-            render={<a href={api.resumePdfUrl(resume.id)} />}
+            onClick={() =>
+              downloadFile(api.resumePdfUrl(resume.id), `resume_${resume.id}.pdf`)
+            }
           >
             Download PDF
           </Button>
