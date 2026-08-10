@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { api, type Resume } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -67,8 +68,9 @@ export function LatexPanel({ resume }: { resume: Resume }) {
         </Button>
         <Button
           variant="outline"
-          nativeButton={false}
-          render={<a href={api.resumeLatexUrl(resume.id)} download />}
+          onClick={() =>
+            downloadFile(api.resumeLatexUrl(resume.id), `resume_${resume.id}.tex`)
+          }
         >
           Download .tex
         </Button>
