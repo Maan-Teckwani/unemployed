@@ -324,6 +324,17 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # When this first became an application that was actually sent. Set once and
+    # never moved, including when the job is later closed.
+    #
+    # `updated_at` cannot answer "when did I apply": marking a job closed six
+    # weeks later moves it, and status alone cannot answer it either, because a
+    # rejection changes the status but does not un-send the application. The
+    # home page counts effort rather than outcomes, so its number must never go
+    # down — which is exactly what a column that is written once gives you.
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class Contact(Base):
