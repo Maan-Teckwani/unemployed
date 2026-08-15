@@ -93,6 +93,27 @@ export const MIN_PILE_H = 88;
 /** Sheets drawn individually. Below this they fuse into slabs — see `slabs`. */
 export const RENDER_INDIVIDUAL = 80;
 
+/**
+ * The thickest a single sheet is ever drawn.
+ *
+ * This used to be 6px, which quietly made the pile useless for the person who
+ * needs it most. At five applications the drawing was five hairlines a shade
+ * off the page colour — so a beginner, opening the app to see what they had
+ * done, saw very nearly nothing, and the state colours riding on a 1.5px edge
+ * were not readable at all. The metaphor only started paying for its space at
+ * around fifty sheets, which is the point at which you no longer need
+ * encouragement.
+ *
+ * Twelve makes a pile of five read as five countable sheets. It costs nothing
+ * later: `layout` divides the available height by the count, so the sheets thin
+ * out on their own as the pile fills and the ceiling stops binding at all past
+ * about seventeen.
+ */
+export const SHEET_MAX = 12;
+
+/** Below this two sheets stop resolving as two, whatever the count. */
+export const SHEET_MIN = 1.5;
+
 /** Sheets per stratum. Matches the smallest milestone so strata line up with marks. */
 export const SLAB_SIZE = 25;
 
@@ -149,7 +170,7 @@ export function layout(count: number): Layout {
   // With nothing compressed the sheets own the full height. Once there is a
   // band underneath, they give up the bottom 45% of it to the strata.
   const region = compressed > 0 ? MAX_PILE_H * 0.55 : MAX_PILE_H;
-  const p = Math.min(6, Math.max(1.5, region / Math.max(shown, 1)));
+  const p = Math.min(SHEET_MAX, Math.max(SHEET_MIN, region / Math.max(shown, 1)));
   const slabH = compressed > 0 ? MAX_PILE_H - shown * p : 0;
   return { compressed, shown, pitch: p, slabH, height: shown * p + slabH };
 }
