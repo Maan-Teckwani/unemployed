@@ -185,9 +185,12 @@ export function layout(count: number): Layout {
 export function sheetY(index: number, count: number): number {
   const { compressed, pitch, slabH } = layout(count);
   if (compressed > 0 && index < compressed) {
-    return (index / compressed) * slabH;
+    return round((index / compressed) * slabH, 2);
   }
-  return slabH + (index - compressed) * pitch;
+  // Rounded for the same reason as the jitter helpers: this feeds a `bottom` on
+  // server-rendered markup, and a repeating decimal there is a hydration
+  // mismatch waiting for the first count that makes the pitch fractional.
+  return round(slabH + (index - compressed) * pitch, 2);
 }
 
 /**
@@ -202,9 +205,27 @@ function jitter(seed: number, salt: number): number {
   return x - Math.floor(x);
 }
 
+/**
+ * Round a jittered value before it reaches an inline style.
+ *
+ * These numbers land in `style` attributes on markup that is server-rendered,
+ * and a full-precision float does not survive the round trip: React writes
+ * `rotate(0.0772644215488981deg)`, the browser stores the parsed attribute as
+ * `rotate(0.0772644deg)`, and hydration compares the two and reports a mismatch
+ * it cannot patch up.
+ *
+ * Two decimal places of a pixel and three of a degree are both far below what
+ * anyone can see, so this costs the drawing nothing and makes the string the
+ * same on both sides.
+ */
+function round(value: number, places: number): number {
+  const f = 10 ** places;
+  return Math.round(value * f) / f;
+}
+
 /** Horizontal offset in px — how squarely this sheet was dropped. */
 export function offsetX(jobId: number): number {
-  return (jitter(jobId, 1) - 0.5) * 7;
+  return round((jitter(jobId, 1) - 0.5) * 7, 2);
 }
 
 /**
@@ -216,12 +237,12 @@ export function offsetX(jobId: number): number {
  * which at these heights just looks like shredding.
  */
 export function shorten(jobId: number): number {
-  return jitter(jobId, 3) * 22;
+  return round(jitter(jobId, 3) * 22, 2);
 }
 
 /** Lean in degrees. Barely any: at three pixels tall, rotation reads as noise. */
 export function rotation(jobId: number): number {
-  return (jitter(jobId, 2) - 0.5) * 0.7;
+  return round((jitter(jobId, 2) - 0.5) * 0.7, 3);
 }
 
 /**
@@ -260,6 +281,46 @@ export function slabs(
 export function nextMilestone(total: number): number | null {
   return MILESTONES.find((m) => m > total) ?? null;
 }
+
+/**
+ * A worked example of a pile, drawn when the real one is empty.
+ *
+ * An empty pile used to be a dashed rectangle fourteen pixels tall and one line
+ * of text. That is the screen a first-time user meets, and it explained the
+ * metaphor at exactly the moment they had no way to guess it: nothing to count,
+ * no colours, nothing to click. The instructions were there, but they were a
+ * sentence about a drawing that was not on the screen yet.
+ *
+ * So the empty state shows the drawing instead — seven sheets of somebody
+ * else's pile, faint and dashed so it cannot be mistaken for your own, with the
+ * two that went somewhere named in place. It answers what a sheet is, what the
+ * colours mean, and that a rejection keeps its sheet, without a paragraph
+ * saying any of it. Then it disappears the moment there is a real sheet to
+ * look at, because by then it has done its job.
+ *
+ * Fixed ids rather than random ones: `shorten`, `offsetX` and `rotation` are
+ * seeded from the id, so these give the example the same ragged edge as a real
+ * pile, and the same one on every render.
+ */
+export type GhostSheet = { id: number; state: State; note?: string };
+
+export const GHOST: GhostSheet[] = [
+  { id: 8101, state: "sent" },
+  { id: 8102, state: "rejected", note: "rejected — still counts" },
+  { id: 8103, state: "sent" },
+  { id: 8104, state: "test" },
+  { id: 8105, state: "sent" },
+  { id: 8106, state: "interview", note: "reached interview" },
+  { id: 8107, state: "sent", note: "yours starts here" },
+];
+
+/**
+ * Room to the right of the example for its notes.
+ *
+ * Wider than the gutter a real pile needs, because a real pile only ever writes
+ * a milestone number or a one-word state out there, and this writes sentences.
+ */
+export const GHOST_GUTTER = 150;
 
 /**
  * Turn the applications list into the pile.
