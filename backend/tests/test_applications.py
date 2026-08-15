@@ -10,6 +10,8 @@ than through TestClient, because constructing the app runs the lifespan in
 app.main, which releases stale runs against the *real* configured database and
 starts a background sweeper thread. A unit test should not do either.
 """
+from datetime import datetime, timedelta
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -128,6 +130,24 @@ def test_both_responses_carry_the_date(db) -> None:
     listed = applications.list_applications(db=db)[0]
     assert listed["applied_at"] == written["applied_at"]
     assert listed["title"] == "SDE I"
+
+
+def test_the_date_goes_out_with_its_offset(db) -> None:
+    """Without one, the browser reads the timestamp as local and loses a day.
+
+    SQLite drops the tzinfo it was handed, so what the ORM reads back is naive
+    UTC. Served bare, an application sent at 00:05 in Delhi arrives at the
+    browser as 18:35 the previous evening, and the daily counter never moves
+    for anyone applying between midnight and dawn.
+    """
+    written = set_status(db, "applied")
+    listed = applications.list_applications(db=db)[0]
+
+    for field in ("applied_at", "updated_at"):
+        for payload in (written, listed):
+            parsed = datetime.fromisoformat(payload[field])
+            assert parsed.tzinfo is not None, f"{field} has no offset"
+            assert parsed.utcoffset() == timedelta(0), f"{field} is not UTC"
 
 
 def test_an_unsent_application_serialises_a_null_rather_than_being_absent(db) -> None:

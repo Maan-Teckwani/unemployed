@@ -51,6 +51,27 @@ SENT = ("applied", "outreach_sent", "test", "interview", "offer", "rejected")
 NOT_SENT = ("todo", "resume_ready")
 
 
+def _iso(value: datetime | None) -> str | None:
+    """ISO-8601 with an explicit offset, which `.isoformat()` alone cannot give.
+
+    These columns are declared `DateTime(timezone=True)` and written with
+    `datetime.now(UTC)`, but SQLite has no timezone type — the dialect formats
+    the components into a string and drops the tzinfo, so what comes back out is
+    a *naive* datetime whose clock is UTC. Serialised bare, that is
+    "2026-08-13T19:32:47", and `new Date()` in the browser reads a timestamp
+    with no offset as local time.
+
+    Which broke the daily counter, and only for part of each day: an application
+    sent at 00:05 in Delhi is stamped 18:35 UTC, the browser reads that as 18:35
+    *yesterday*, and "today" stays at zero while the pile — which counts sheets
+    of any date — goes up. Negative offsets fail the same way after their
+    evening. Naive is taken as UTC because that is the only thing ever written.
+    """
+    if value is None:
+        return None
+    return (value.replace(tzinfo=UTC) if value.tzinfo is None else value).isoformat()
+
+
 @router.get("")
 def list_applications(db: Session = Depends(get_db)) -> list[dict]:
     rows = db.execute(
@@ -61,8 +82,8 @@ def list_applications(db: Session = Depends(get_db)) -> list[dict]:
             "job_id": a.job_id,
             "status": a.status,
             "notes": a.notes,
-            "updated_at": a.updated_at.isoformat(),
-            "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+            "updated_at": _iso(a.updated_at),
+            "applied_at": _iso(a.applied_at),
             "title": j.title,
             "company": j.company,
         }
@@ -119,6 +140,6 @@ def set_status(job_id: int, data: ApplicationIn, db: Session = Depends(get_db)) 
         "job_id": app_row.job_id,
         "status": app_row.status,
         "notes": app_row.notes,
-        "updated_at": app_row.updated_at.isoformat(),
-        "applied_at": app_row.applied_at.isoformat() if app_row.applied_at else None,
+        "updated_at": _iso(app_row.updated_at),
+        "applied_at": _iso(app_row.applied_at),
     }
