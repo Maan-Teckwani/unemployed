@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, type CompanyRow, type CompanySearchResult } from "@/lib/api";
+import { usePipeline } from "@/components/pipeline/pipeline-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ export function CompanyManager() {
   // and this one is worth getting right: it is what the companies list shows
   // and what every job from this board is filed under.
   const [name, setName] = useState("");
+  const { start, running } = usePipeline();
 
   const load = useCallback(async () => {
     try {
@@ -128,6 +130,17 @@ export function CompanyManager() {
           on it and copy the address from there.
         </p>
       )}
+
+      {/* Moved here from the home page, where it sat beside Fetch at the same
+          size. It is a once-in-a-while action that adds rows to the list right
+          below it, so this is where you are when you want it. */}
+      <button
+        onClick={() => start("discover")}
+        disabled={running}
+        className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground disabled:no-underline disabled:opacity-60"
+      >
+        {running ? "Something is already running…" : "Or find companies automatically — about 5 minutes"}
+      </button>
 
       {result && (
         <div className="rounded-md border p-3 text-sm">

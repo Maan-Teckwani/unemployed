@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { PipelineProvider } from "@/components/pipeline/pipeline-provider";
 import { SiteNav } from "@/components/site-nav";
 import { StackProvider } from "@/components/stack/stack-provider";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -57,17 +58,21 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <ThemeProvider>
           <StackProvider>
-            <SiteNav />
-            <main className="flex-1 w-full max-w-5xl mx-auto px-6 py-10">{children}</main>
-            <Toaster />
-            {/* Where a thrown card flies. Outside every scroll container and
-                above everything, so the flight is never clipped by a card it
-                happens to start inside. */}
-            <div
-              id="flip-layer"
-              aria-hidden
-              className="pointer-events-none fixed inset-0 z-[60]"
-            />
+            <PipelineProvider>
+              <SiteNav />
+              <main className="flex-1 w-full max-w-5xl mx-auto px-6 py-10">
+                {children}
+              </main>
+              <Toaster />
+              {/* Where a thrown card flies. Outside every scroll container and
+                  above everything, so the flight is never clipped by a card it
+                  happens to start inside. */}
+              <div
+                id="flip-layer"
+                aria-hidden
+                className="pointer-events-none fixed inset-0 z-[60]"
+              />
+            </PipelineProvider>
           </StackProvider>
         </ThemeProvider>
       </body>
