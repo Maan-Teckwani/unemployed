@@ -221,12 +221,19 @@ say "Preparing the backend"
 # Has the install already happened? `find_spec` answers that without importing
 # anything - importing sentence_transformers drags in PyTorch and takes seconds,
 # on every run, to answer a question about file layout.
+#
+# But "something is installed" is not "what requirements.txt now asks for". A
+# pull that adds a dependency leaves all three of these probes passing and the
+# new package absent, so the stamp answers the question the probe cannot: is
+# this venv built from the requirements.txt sitting here today?
 CHECK='import importlib.util as u; import sys; sys.exit(0 if all(u.find_spec(m) for m in ("fastapi","sentence_transformers","alembic")) else 1)'
-if ! "$VENV" -c "$CHECK" >/dev/null 2>&1; then
-  ok "Installing Python packages. This is the slow part: three to ten minutes,"
-  ok "most of it PyTorch. It has not frozen, and it only happens once."
+STAMP="$BACKEND/.venv/.requirements"
+if ! "$VENV" -c "$CHECK" >/dev/null 2>&1 || ! cmp -s "$BACKEND/requirements.txt" "$STAMP"; then
+  ok "Installing Python packages. The first time this is the slow part: three to"
+  ok "ten minutes, most of it PyTorch. It has not frozen."
   "$VENV" -m pip install --disable-pip-version-check -q --upgrade pip
   "$VENV" -m pip install --disable-pip-version-check -r "$BACKEND/requirements.txt"
+  cp "$BACKEND/requirements.txt" "$STAMP"
 fi
 
 # Creates data/jobsearch.db on the first run and is a no-op on every one after.
@@ -236,7 +243,13 @@ ok "Backend ready"
 
 # --- 4. Frontend ------------------------------------------------------------
 say "Preparing the frontend"
-[ -d "$WEB/node_modules" ] || (cd "$WEB" && npm install)
+# Every time, not only when node_modules is missing. That folder existing means
+# *an* install happened once, not that it matches the package.json that just
+# arrived with a pull - so the version that added a dependency reached everyone
+# who already had the app as a missing-module stack trace on startup, which is
+# the worst possible first impression of an upgrade. npm answers "up to date"
+# in about a second when nothing has changed, and that second is worth it.
+(cd "$WEB" && npm install --no-audit --no-fund)
 ok "Frontend ready"
 
 # --- 5. Start ---------------------------------------------------------------

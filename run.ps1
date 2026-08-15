@@ -328,19 +328,30 @@ if (-not (Test-Path $Venv)) {
 #
 # It is also far quicker: importing sentence_transformers drags in PyTorch and
 # takes seconds, on every single run, to answer a question about file layout.
+#
+# But "something is installed" is not "what requirements.txt now asks for". A
+# pull that adds a dependency leaves all three of these probes passing and the
+# new package absent, so the stamp answers the question the probe cannot: is
+# this venv built from the requirements.txt sitting here today?
 $check = "import importlib.util as u; " +
          "print(all(u.find_spec(m) is not None for m in ('fastapi','sentence_transformers','alembic')))"
 $installed = Probe { & $Venv -c $check }
 
-if ($installed -ne "True") {
-    Ok "Installing Python packages. This is the slow part: three to ten minutes,"
-    Ok "most of it PyTorch. It has not frozen, and it only happens once."
+$req = Join-Path $Backend "requirements.txt"
+$stamp = Join-Path $Backend ".venv\.requirements"
+$stale = -not (Test-Path $stamp) -or
+         ((Get-FileHash $req).Hash -ne (Get-FileHash $stamp).Hash)
+
+if (($installed -ne "True") -or $stale) {
+    Ok "Installing Python packages. The first time this is the slow part: three to"
+    Ok "ten minutes, most of it PyTorch. It has not frozen."
     & $Venv -m pip install --disable-pip-version-check -q --upgrade pip
-    & $Venv -m pip install --disable-pip-version-check -r (Join-Path $Backend "requirements.txt")
+    & $Venv -m pip install --disable-pip-version-check -r $req
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nInstalling Python packages failed." -ForegroundColor Red
         exit 1
     }
+    Copy-Item $req $stamp -Force
 }
 
 # Creates data/jobsearch.db on the first run and is a no-op on every one after.
@@ -357,17 +368,21 @@ Ok "Backend ready"
 
 # --- 4. Frontend ------------------------------------------------------------
 Say "Preparing the frontend"
-if (-not (Test-Path (Join-Path $Web "node_modules"))) {
-    Ok "Installing npm packages..."
-    Push-Location $Web
-    try {
-        npm install
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "`nnpm install failed." -ForegroundColor Red
-            exit 1
-        }
-    } finally { Pop-Location }
-}
+# Every time, not only when node_modules is missing. That folder existing means
+# *an* install happened once, not that it matches the package.json that just
+# arrived with a pull - so the version that added a dependency reached everyone
+# who already had the app as a missing-module stack trace on startup, which is
+# the worst possible first impression of an upgrade. npm answers "up to date"
+# in about a second when nothing has changed, and that second is worth it.
+Ok "Checking npm packages..."
+Push-Location $Web
+try {
+    npm install --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "`nnpm install failed." -ForegroundColor Red
+        exit 1
+    }
+} finally { Pop-Location }
 Ok "Frontend ready"
 
 # --- 5. Start ---------------------------------------------------------------
