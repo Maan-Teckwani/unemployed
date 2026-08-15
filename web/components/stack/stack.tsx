@@ -5,6 +5,8 @@ import { useRef } from "react";
 import { gsap, OK, useGSAP } from "@/lib/motion";
 import {
   framing,
+  GHOST,
+  GHOST_GUTTER,
   layout,
   MAX_PILE_H,
   MILESTONES,
@@ -62,9 +64,16 @@ export function Stack() {
 
   return (
     <section aria-labelledby="stack-heading" className="space-y-5">
-      <h2 id="stack-heading" className="sr-only">
-        Your application pile
-      </h2>
+      {/* This heading was `sr-only`, which meant the one drawing on the home
+          page was the only thing on it with no name. A screen reader was told
+          what the pile was; everyone else had to infer it from a stack of pale
+          rectangles. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h2 id="stack-heading" className="font-medium">
+          Your pile
+        </h2>
+        <HowItWorks defaultOpen={total === 0} />
+      </div>
 
       <div className="flex flex-wrap items-end gap-x-10 gap-y-6">
         <Pile model={model} landed={landed} />
@@ -91,23 +100,116 @@ export function Stack() {
         </div>
       </div>
 
-      {total === 0 ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Link
-            href="/today"
-            className={buttonVariants({ variant: "default", size: "sm" })}
-          >
-            Find something to apply to →
-          </Link>
-          <p className="text-xs text-muted-foreground">
-            Set a job to <strong className="font-medium">Applied</strong> and its
-            sheet lands here.
-          </p>
+      {total === 0 ? <HowToAdd /> : (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">{framing(model)}</p>
+          {/* The instructions used to exist only while the pile was empty, so
+              they vanished at the exact moment someone had done this once and
+              was least likely to remember it. They stay for the first few. */}
+          {total <= 3 && (
+            <p className="text-xs text-muted-foreground">
+              Sent another? Set it to{" "}
+              <strong className="font-medium text-foreground">Applied</strong> and
+              its sheet lands here too.
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">{framing(model)}</p>
       )}
     </section>
+  );
+}
+
+/**
+ * How a sheet gets onto the pile, as the three things you actually do.
+ *
+ * This app cannot see whether you submitted anything — you apply on the
+ * company's own site, and it deliberately does not automate that. So the pile
+ * only moves when you tell it, and someone who does not know that reads an
+ * empty pile as the app being broken rather than as a step they have not taken.
+ * Saying so plainly is the whole fix.
+ */
+function HowToAdd() {
+  const steps = [
+    <>Open a role from the list below</>,
+    <>Apply on the company&rsquo;s site, as normal</>,
+    <>
+      Set it to <strong className="font-medium text-foreground">Applied</strong> —
+      the sheet lands here
+    </>,
+  ];
+
+  return (
+    <div className="space-y-3">
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-muted-foreground">
+        {steps.map((step, i) => (
+          <li key={i} className="flex items-center gap-2">
+            {i > 0 && <span aria-hidden className="text-paper-edge">→</span>}
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="data grid size-4 shrink-0 place-items-center rounded-full border text-[10px] leading-none"
+              >
+                {i + 1}
+              </span>
+              {step}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <Link
+        href="/today"
+        className={buttonVariants({ variant: "default", size: "sm" })}
+      >
+        Find a role to apply to →
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * The manual, folded away.
+ *
+ * Open by default while the pile is empty and shut once there is one, because
+ * the questions it answers are the ones you have at the start — and a paragraph
+ * pinned permanently to the screen you open every morning is the thing V2 spent
+ * its time removing. Native `details` so it needs no state, works before
+ * hydration, and is keyboard-operable for free.
+ */
+function HowItWorks({ defaultOpen }: { defaultOpen: boolean }) {
+  return (
+    <details open={defaultOpen} className="group/how min-w-0 text-sm">
+      <summary className="cursor-pointer list-none text-muted-foreground hover:text-foreground marker:content-none">
+        <span className="underline decoration-dotted underline-offset-4">
+          How the pile works
+        </span>
+        <span aria-hidden className="ml-1 inline-block transition-transform group-open/how:rotate-90">
+          ›
+        </span>
+      </summary>
+      <ul className="mt-3 max-w-prose space-y-1.5 text-xs text-muted-foreground">
+        <li>
+          <strong className="font-medium text-foreground">One sheet is one
+          application</strong> you sent. It is a record of effort, not of luck.
+        </li>
+        <li>
+          <strong className="font-medium text-foreground">Colour is how far it
+          got</strong> — sent, test, interview, offer, rejected.
+        </li>
+        <li>
+          <strong className="font-medium text-foreground">A rejection keeps its
+          sheet.</strong> Being turned down does not un-send the application, and
+          a number that falls on your worst day is a number that punishes you for
+          it.
+        </li>
+        <li>
+          <strong className="font-medium text-foreground">Click any sheet</strong>{" "}
+          to reopen that job.
+        </li>
+        <li>
+          Ticks up the right-hand side are milestones — 25, 50, 100.
+        </li>
+      </ul>
+    </details>
   );
 }
 
@@ -173,6 +275,69 @@ function Summary({
   );
 }
 
+/**
+ * Somebody else's pile, drawn where yours will be.
+ *
+ * Dashed and faded throughout so it never reads as a count you already have,
+ * and `aria-hidden` because it is an illustration of the paragraph beside it
+ * rather than a second set of facts — the empty pile is already announced on
+ * the group above.
+ *
+ * It borrows the real geometry (`layout`, `sheetY`, `shorten`, `offsetX`) so
+ * that what you are shown is exactly the shape your seventh application will
+ * make, rather than a picture of one.
+ */
+function Ghost() {
+  const geo = layout(GHOST.length);
+  const face = Math.max(2, geo.pitch - 1);
+
+  return (
+    <div aria-hidden className="absolute inset-0 opacity-70">
+      {GHOST.map((sheet, i) => {
+        const coloured = sheet.state !== "sent";
+        return (
+          <div key={sheet.id}>
+            <div
+              className="absolute rounded-[1.5px] border border-dashed"
+              style={{
+                bottom: sheetY(i, GHOST.length),
+                height: face,
+                width: SHEET_W - shorten(sheet.id),
+                left: Math.max(0, offsetX(sheet.id) + 5),
+                transform: `rotate(${rotation(sheet.id)}deg)`,
+                borderColor: coloured
+                  ? `var(--state-${sheet.state})`
+                  : "var(--paper-edge)",
+                backgroundColor: coloured
+                  ? `color-mix(in oklch, var(--state-${sheet.state}) 22%, transparent)`
+                  : "transparent",
+              }}
+            />
+            {sheet.note && (
+              <div
+                className="absolute flex items-center gap-1.5"
+                style={{ bottom: sheetY(i, GHOST.length) - 3, left: SHEET_W + 4 }}
+              >
+                <span
+                  className={`h-px w-2 ${
+                    coloured ? FILL[sheet.state] : "bg-milestone/50"
+                  }`}
+                />
+                {/* Not `.meta`: that is uppercase mono with wide tracking,
+                    which is right for a one-word label and unreadable for a
+                    sentence — and three times the width. */}
+                <span className="whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+                  {sheet.note}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Pile({ model, landed }: { model: StackModel; landed: number }) {
   const { sheets, total, nextMilestone } = model;
   const scope = useRef<HTMLDivElement>(null);
@@ -220,16 +385,17 @@ function Pile({ model, landed }: { model: StackModel; landed: number }) {
           ? "Your pile is empty. Nothing sent yet."
           : `A pile of ${total} sent application${total === 1 ? "" : "s"}.`
       }
-      className="relative shrink-0"
-      style={{ width: SHEET_W + GUTTER, height, contain: "layout paint" }}
+      className="relative shrink-0 max-w-full"
+      // The example writes sentences in the gutter where a real pile writes a
+      // milestone number, and `contain: paint` clips anything that overruns —
+      // so the empty state gets the wider one or its notes are cut in half.
+      style={{
+        width: SHEET_W + (total === 0 ? GHOST_GUTTER : GUTTER),
+        height,
+        contain: "layout paint",
+      }}
     >
-      {total === 0 && (
-        <div
-          aria-hidden
-          className="absolute bottom-0 left-0 rounded-[3px] border border-dashed border-paper-edge/70"
-          style={{ width: SHEET_W, height: 14 }}
-        />
-      )}
+      {total === 0 && <Ghost />}
 
       {/* Older sheets, fused into strata. One element per block however many
           hundreds are underneath, so the drawing never scales with the count. */}

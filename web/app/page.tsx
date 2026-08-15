@@ -85,6 +85,14 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
+      {/* Before anything works, this is the whole page.
+          It used to render last — under an empty pile and an empty list — so
+          the first-time user read the two things that make no sense yet and
+          found the instructions for them at the bottom, if they scrolled. */}
+      {setup && !setup.ready && (
+        <FirstRun steps={setup.steps} nextId={nextStep?.id} />
+      )}
+
       {/* Where you have got to, and the one control that gets you more to do.
           Fetch sits at the top because nothing on this page exists until it has
           run, and it is the only filled button on the screen so there is never a
@@ -184,44 +192,102 @@ export default function Home() {
         </div>
       </section>
 
-      {/* First-time user only. Once every step is done this is furniture on the
-          page you open every morning, and Setup in the nav is where it lives. */}
-      {setup && !setup.ready && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium">Get started</h2>
-          <div className="rounded-lg border divide-y">
-            {setup.steps.map((step) => (
-              <div key={step.id} className="flex items-center gap-3 px-4 py-3">
-                <span
-                  className={`size-5 shrink-0 rounded-full border grid place-items-center text-xs ${
-                    step.done ? "bg-foreground text-background border-foreground" : ""
+    </div>
+  );
+}
+
+/**
+ * The first-run walkthrough.
+ *
+ * Three facts a first-time user cannot get from the rest of the page: that
+ * there is an order, that it is short, and that it only happens once. Without
+ * them the home screen is a pile at zero and a list of nothing, which reads as
+ * an app that does not work rather than one that has not been told anything
+ * yet.
+ *
+ * Numbered rather than ticked. A checklist says "here are some tasks"; a
+ * numbered sequence says the second one will not do anything useful until the
+ * first is done, which is the actual constraint — a profile with no knowledge
+ * base produces nothing, and scoring before fetching produces nothing.
+ *
+ * Only the next step gets a filled button. Everything below it is reachable but
+ * quiet, so there is exactly one thing to press on a screen the person has
+ * never seen.
+ */
+function FirstRun({
+  steps,
+  nextId,
+}: {
+  steps: SetupStatus["steps"];
+  nextId?: string;
+}) {
+  const doneCount = steps.filter((s) => s.done).length;
+
+  return (
+    <section className="space-y-4 rounded-lg border bg-paper-shade/25 p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h2 className="font-medium">Set up, once</h2>
+        <p className="data text-data-sm text-muted-foreground">
+          {doneCount} of {steps.length} done
+        </p>
+      </div>
+
+      <p className="max-w-prose text-sm text-muted-foreground">
+        In order — each one needs the one before it. After this the app is a
+        daily loop: fetch, pick, apply.
+      </p>
+
+      <ol className="space-y-1">
+        {steps.map((step, i) => {
+          const isNext = step.id === nextId;
+          return (
+            <li
+              key={step.id}
+              className={`flex items-center gap-3 rounded-md px-3 py-2.5 ${
+                isNext ? "bg-background ring-1 ring-border" : ""
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`data grid size-6 shrink-0 place-items-center rounded-full border text-xs ${
+                  step.done
+                    ? "border-foreground bg-foreground text-background"
+                    : isNext
+                      ? "border-foreground text-foreground"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {step.done ? "✓" : i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-sm ${
+                    step.done
+                      ? "text-muted-foreground line-through decoration-muted-foreground/40"
+                      : "font-medium"
                   }`}
-                  aria-hidden
                 >
-                  {step.done ? "✓" : ""}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={step.done ? "text-sm" : "text-sm font-medium"}>
-                    {step.label}
-                  </p>
-                  {step.detail && <p className="meta mt-0.5">{step.detail}</p>}
-                </div>
-                {step.href && (
-                  <Link
-                    href={step.href}
-                    className={buttonVariants({
-                      variant: step.id === nextStep?.id ? "default" : "outline",
-                      size: "sm",
-                    })}
-                  >
-                    {step.done ? "Edit" : "Open"}
-                  </Link>
+                  {step.label}
+                </p>
+                {step.detail && !step.done && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{step.detail}</p>
                 )}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
+              {step.href && (
+                <Link
+                  href={step.href}
+                  className={buttonVariants({
+                    variant: isNext ? "default" : "ghost",
+                    size: "sm",
+                  })}
+                >
+                  {step.done ? "Edit" : isNext ? "Start →" : "Open"}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
