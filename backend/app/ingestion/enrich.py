@@ -84,7 +84,7 @@ def enrich(
     for index, job in enumerate(jobs, start=1):
         if on_progress and index % 25 == 0:
             on_progress(index, len(jobs), f"Ranking jobs ({index}/{len(jobs)})")
-        skip_reason = _cheap_skip(job.title, families)
+        skip_reason = _cheap_skip(job, families)
         if skip_reason:
             _save_match(db, job.id, _filtered_result(skip_reason))
             counts["filtered"] += 1
@@ -145,12 +145,21 @@ def _filtered_result(reason: str) -> dict:
     }
 
 
-def _cheap_skip(title: str, families: set[str]) -> str:
-    """Reason to skip this job without calling the LLM, or "" to proceed."""
-    family = classify(title)
+def _cheap_skip(job: Job, families: set[str]) -> str:
+    """Reason to skip this job without calling the LLM, or "" to proceed.
+
+    Mirrors `_hard_filter`, including its exemption for pasted jobs — otherwise a
+    rescore would re-filter by title the very jobs the scorer deliberately lets
+    through, and they would drop out of the list again the next time preferences
+    changed.
+    """
+    if job.source == "manual":
+        return ""
+
+    family = classify(job.title)
     if family not in families:
         return f"not a target role ({family})"
-    if not is_fresher_friendly(title):
+    if not is_fresher_friendly(job.title):
         return "senior title"
     return ""
 
@@ -168,7 +177,7 @@ def rescore_all(db: Session) -> dict:
 
     counts = {"scored": 0, "filtered": 0}
     for job in db.scalars(select(Job).where(Job.status == "active")):
-        skip_reason = _cheap_skip(job.title, families)
+        skip_reason = _cheap_skip(job, families)
         if skip_reason:
             _save_match(db, job.id, _filtered_result(skip_reason))
             counts["filtered"] += 1

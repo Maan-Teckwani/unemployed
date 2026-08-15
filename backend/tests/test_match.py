@@ -8,10 +8,16 @@ import pytest
 from app.ai.match import WEIGHTS, CandidateIndex, _hard_filter, _in_candidate, score, score_cheap
 
 
-def job_stub(title: str, description: str = "", location: str = "Bengaluru, India", remote: bool = False):
-    """A Job stand-in. Real rows always carry location/remote, so the double does too."""
+def job_stub(
+    title: str,
+    description: str = "",
+    location: str = "Bengaluru, India",
+    remote: bool = False,
+    source: str = "greenhouse",
+):
+    """A Job stand-in. Real rows always carry location/remote/source, so the double does too."""
     return SimpleNamespace(
-        title=title, description=description, location=location, remote=remote
+        title=title, description=description, location=location, remote=remote, source=source
     )
 
 
@@ -157,3 +163,29 @@ def test_hard_filter(
     job = job_stub(title)
     requirements = {"seniority": seniority, "min_years": min_years}
     assert _hard_filter(job, requirements, confidence)[0] is filtered
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Innovation intern",            # classifies as "other"
+        "Recruiting Coordinator",       # a family the user does not want
+        "Senior Software Engineer",     # a title rule
+        "Software Engineer",            # would pass anyway
+    ],
+)
+def test_pasted_jobs_are_never_filtered(title: str) -> None:
+    """Every rule that filters a scraped job must let a pasted one through.
+
+    Typing a job in by hand is already the decision the filter exists to make,
+    and a pasted job that scores well but never reaches the list reads as the
+    app losing it.
+    """
+    job = job_stub(title, source="manual")
+    assert _hard_filter(job, {"seniority": "senior", "min_years": 9}, 0.9) == (False, "")
+
+
+def test_scraped_jobs_are_still_filtered() -> None:
+    """The exemption must be about the source, not a hole in the rules."""
+    job = job_stub("Innovation intern", source="greenhouse")
+    assert _hard_filter(job, {}, 0.0)[0] is True

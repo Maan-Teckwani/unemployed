@@ -223,6 +223,14 @@ def _hard_filter(
     rules only fire when the extraction is trustworthy — a bad parse must never
     hide a good job.
     """
+    # A pasted job is already a decision. The filter exists to make thousands of
+    # scraped postings manageable — it throws away 98% of them — and applying it
+    # to the handful someone typed in by hand only ever contradicts them. It also
+    # fails in a way that reads as a bug: the job is scored, the score is good,
+    # and it silently never reaches the list they went looking for it in.
+    if getattr(job, "source", "") == "manual":
+        return False, ""
+
     max_years = getattr(preferences, "max_years", None) or DEFAULT_MAX_YEARS
     allowed = set(getattr(preferences, "allowed_seniority", None) or DEFAULT_ALLOWED_SENIORITY)
     families = set(getattr(preferences, "role_families", None) or DEFAULT_ROLE_FAMILIES)
