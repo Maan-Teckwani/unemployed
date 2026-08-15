@@ -171,23 +171,32 @@ won't produce results until the model finishes.
 3. **Filters** — **your region**, role families, max years of experience, and
    preferred locations. Set the region first: it decides which jobs are even
    stored.
-4. **Find companies** (once, ~5 min) — ships with 90+ already discovered, so this
-   is only needed if you want more:
-   ```bash
-   python -m app.ingestion.discover
-   ```
-   Or search for companies by name in **Filters → Companies**, one at a time.
-5. **Fetch jobs** (~2 min):
-   ```bash
-   python -m app.ingestion.run
-   ```
-6. **Score them** (~40 min — this is the local LLM working):
-   ```bash
-   python -m app.ingestion.enrich --top 100
-   ```
-7. Open **http://localhost:3000** and start applying.
+4. **Fetch jobs** — the one button on the home page. It reads every tracked
+   board and then scores what it found, as a single action, because jobs nobody
+   has scored are jobs nobody can act on. Give it about ten minutes; the bar in
+   the nav follows it onto whatever page you go to next.
+5. That is it. The ranked list fills in underneath, and applying starts there.
 
-In the Docker profile, steps 5–6 run automatically once a day.
+Companies come with the app: 90+ boards are already discovered, so nothing above
+needs a company step. To add one, **Setup → Filters → Companies** takes a name
+for Greenhouse, Lever, Ashby, SmartRecruiters and Recruitee, or a careers link
+for Workday. The same panel can go looking for more on its own, which takes
+about five minutes.
+
+<details>
+<summary>The same steps from the command line</summary>
+
+```bash
+python -m app.ingestion.discover          # find more company boards
+```
+```bash
+python -m app.ingestion.run               # fetch
+```
+```bash
+python -m app.ingestion.enrich --top 100  # score, deeper than the button's 25
+```
+In the Docker profile, the fetch and the scoring run automatically once a day.
+</details>
 
 ---
 
