@@ -68,11 +68,13 @@ export default function ImportPage() {
   const [parsing, setParsing] = useState(false);
   const [job, setJob] = useState<ParseJob | null>(null);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
 
   function onFiles(list: FileList | null) {
     if (!list) return;
     setUploads(Array.from(list).map((file) => ({ file, kind: "resume" })));
     setProposed(null);
+    setErrors([]);
   }
 
   /**
@@ -86,6 +88,7 @@ export default function ImportPage() {
     if (uploads.length === 0) return toast.error("Choose at least one file");
     setParsing(true);
     setJob(null);
+    setErrors([]);
     try {
       let current = await api.startParse(uploads);
       setJob(current);
@@ -108,7 +111,7 @@ export default function ImportPage() {
       }
 
       if (current.status === "failed") throw new Error(current.message);
-      for (const error of current.errors) toast.error(error);
+      setErrors(current.errors);
 
       setProposed(current.chunks.map(toEditable));
       if (current.chunks.length === 0)
@@ -206,6 +209,14 @@ export default function ImportPage() {
               several minutes. Nothing is saved until you review it.
             </p>
             <GoBackTo />
+          </div>
+        )}
+
+        {errors.length > 0 && (
+          <div className="rounded-md bg-destructive/10 text-destructive dark:bg-destructive/20 p-3 space-y-1 text-sm">
+            {errors.map((error, i) => (
+              <p key={i}>{error}</p>
+            ))}
           </div>
         )}
       </div>

@@ -4,6 +4,8 @@ Adding an item splits it into one chunk per accomplishment. Each chunk is
 embedded from a *context-rich* string (title + accomplishment + technologies),
 not just the raw bullet — more context produces a more useful vector.
 """
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +17,8 @@ from app.api import parse_jobs
 from app.db.models import KBChunk
 from app.db.session import get_db
 from app.schemas import ChunkIn, KBChunkOut, KBItemIn, SearchResult
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/kb", tags=["knowledge-base"])
 
@@ -105,6 +109,7 @@ def start_parse(
         try:
             documents.append((f.filename or "document", extract_text(f.filename or "", f.file.read()), kind))
         except Exception as e:  # noqa: BLE001 - report, keep going
+            log.exception("Extracting text from %s failed", f.filename)
             errors.append(f"{f.filename}: {e}")
 
     if not documents:

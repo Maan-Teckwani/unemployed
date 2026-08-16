@@ -21,8 +21,12 @@ from app.ai.llm import generate_json
 
 # How much document text goes into one model call. A long CV is split across
 # several calls rather than truncated: cutting at 12k characters silently threw
-# away the second half of anyone's career.
-_SEGMENT_CHARS = 12000
+# away the second half of anyone's career. Kept small (not just "under the
+# model's context window") because small local models silently under-extract
+# well before they run out of room: llama3.2:3b given ~7,400 chars in one call
+# returned 2 of the ~20 real chunks, with no error. Splitting into more,
+# smaller calls is the mitigation, not a bigger context budget.
+_SEGMENT_CHARS = 3000
 
 
 def extract_text(filename: str, data: bytes) -> str:
@@ -37,6 +41,76 @@ def extract_text(filename: str, data: bytes) -> str:
     raise ValueError(f"Unsupported file type: .{ext} (use pdf, docx, txt, or md)")
 
 
+# Private-use-area codepoints: never real text, just icon glyphs (contact-info
+# icons and the like) that some templates draw inline with the words around
+# them. The model has no use for a phone-icon codepoint.
+_PRIVATE_USE_AREA = re.compile(r"[\uE000-\uF8FF]")
+
+# What a bullet marker looks like across the templates we've seen. Used both to
+# rejoin a wrapped bullet's continuation line in `_join_wrapped_lines` and to
+# find entry boundaries in `_entries`.
+_BULLET = re.compile(r"^\s*[\u2022\u25AA\u25E6\-*]")
+
+# pdfplumber's default word-gap threshold (3pt) is wider than the actual glyph
+# gaps in some resume-template fonts (typically LaTeX output), which merges
+# adjacent words into one run with no space between them at all. Narrowing it
+# recovers real word boundaries; checked against a plain Helvetica PDF too, so
+# this isn't just chasing one font.
+_PDF_X_TOLERANCE = 0.5
+
+# Some LaTeX resume templates render small-caps headings with a font whose
+# ToUnicode table is simply wrong for the small lowercase-shaped glyphs, so
+# extraction comes back with a single stray lowercase letter inside an
+# otherwise all-caps word ("ENGiNEER"). A 3B-parameter model asked to fix this
+# in the same breath as its other extraction rules left it uncorrected in
+# testing, so it's handled deterministically here instead.
+_SMALLCAPS_WORD = re.compile(r"[A-Za-z]{4,}")
+
+
+def _fix_smallcaps_casing(text: str) -> str:
+    def fix(match: re.Match) -> str:
+        word = match.group(0)
+        lower = [i for i, ch in enumerate(word) if ch.islower()]
+        if len(lower) != 1:
+            return word
+        i = lower[0]
+        return word[:i] + word[i].upper() + word[i + 1 :]
+
+    return _SMALLCAPS_WORD.sub(fix, text)
+
+
+def _join_wrapped_lines(page: "pdfplumber.page.Page") -> str:
+    """Page text with each bullet's word-wrapped continuation rejoined onto it.
+
+    A bullet that wraps to a second visual line comes back from `extract_text`
+    as two plain lines with nothing marking the second as a continuation, which
+    looks identical to a new heading line. Resumes reliably render that second
+    line indented further right than the bullet marker itself, though (it lines
+    up under the bullet's text, not the bullet), so `x0` — how far a line starts
+    from the page's left edge — is what tells continuation and heading apart
+    where the text alone can't.
+
+    Assumes a single-column layout. A two-column resume's right column would
+    read as consistently more indented than the left, so this would wrongly
+    treat it as a run-on continuation — the same known multi-column limitation
+    already accepted elsewhere in extraction, not a new gap.
+    """
+    lines = page.extract_text_lines(x_tolerance=_PDF_X_TOLERANCE)
+    joined: list[str] = []
+    bullet_indent: float | None = None
+    for line in lines:
+        text = line["text"]
+        if _BULLET.match(text):
+            joined.append(text)
+            bullet_indent = line["x0"]
+        elif bullet_indent is not None and line["x0"] > bullet_indent:
+            joined[-1] = f"{joined[-1]} {text}"
+        else:
+            joined.append(text)
+            bullet_indent = None
+    return "\n".join(joined)
+
+
 def _from_pdf(data: bytes) -> str:
     """Page text, plus any tables the page draws.
 
@@ -46,15 +120,34 @@ def _from_pdf(data: bytes) -> str:
     row together, which is the unit that means something.
     """
     parts: list[str] = []
-    with pdfplumber.open(io.BytesIO(data)) as pdf:
-        for page in pdf.pages:
-            parts.append(page.extract_text() or "")
-            for table in page.extract_tables() or []:
-                for row in table:
-                    cells = [str(c).strip() for c in row if c and str(c).strip()]
-                    if cells:
-                        parts.append(" | ".join(cells))
-    return "\n".join(p for p in parts if p.strip())
+    try:
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            for page in pdf.pages:
+                page_text = _join_wrapped_lines(page)
+                page_text = _PRIVATE_USE_AREA.sub("", page_text)
+                parts.append(_fix_smallcaps_casing(page_text))
+                for table in page.extract_tables() or []:
+                    for row in table:
+                        cells = [str(c).strip() for c in row if c and str(c).strip()]
+                        if cells:
+                            parts.append(" | ".join(cells))
+    except Exception as e:
+        raise ValueError(
+            "Couldn't open that PDF, it might be locked or a little broken. "
+            "Re-export it and give it another try."
+        ) from e
+
+    text = "\n".join(p for p in parts if p.strip())
+    if not text.strip():
+        # A PDF that opens fine but yields no text is almost always a scan or a
+        # flattened image, not a bug in the extraction above — a different
+        # message than the open-failure one because the fix is different too.
+        raise ValueError(
+            "I can open your PDF but I cannot read anything from it. Could it "
+            "be an image based PDF or a text saved as a picture? Try exporting "
+            "your PDF as a digital scannable PDF and we will take it from there."
+        )
+    return text
 
 
 def _from_docx(data: bytes) -> str:
@@ -106,10 +199,14 @@ _SYSTEM = """You extract a candidate's career into structured accomplishment chu
 Rules:
 - Use ONLY information present in the document. Never invent facts, metrics, employers, dates, or technologies.
 - Create ONE chunk per distinct accomplishment or responsibility (split multi-part bullets).
+- `title` is the person's role/job title/degree/project name (e.g. "Software Engineer"). `company` is the employer/institution/organization name (e.g. "Acme Corp"). Never put the same value in both, and never leave `title` blank.
+- A single job or project usually produces several chunks, one per bullet. Repeat `title`, `company`, and `date_range` identically on EVERY chunk from that job or project, even though they don't change between bullets. Never state them on only the first chunk and omit them from the rest.
+- `company` must be a name that literally appears in the text near that entry. Many personal/side projects have no employer at all — when none is named, `company` is null. Never guess a company from what the project is *about* (a project about cars is not automatically related to a car company); never pull `company` from inside the project's own title either.
 - Choose `type` from: project, experience, leadership, achievement, skill, certification, education.
 - Use `education` for degrees, schools and coursework, one chunk per qualification. Put the degree in `title`, the institution in `company` and the years in `date_range`.
 - Fill `technologies` and `skills` only with items actually mentioned; otherwise use [].
 - Fill `impact` only if a concrete outcome/metric is stated; otherwise null.
+- `accomplishment` is REQUIRED on every chunk — it is the bullet's own text (what was done), and it is never empty or omitted. `context` is a different, optional field: a short note ABOUT the accomplishment (e.g. the project or initiative it was part of), not a substitute for it. A chunk with a `context` but no `accomplishment` is wrong.
 - Keep `accomplishment` concise, truthful, and results-oriented.
 
 Respond as JSON: {"chunks": [{"type","title","context","company","date_range","accomplishment","technologies":[],"skills":[],"impact"}]}"""
@@ -206,9 +303,53 @@ def segments_with_sections(text: str) -> list[tuple[str, str | None]]:
     return out
 
 
+
+# A one-line summary some project entries trail their bullets with. Shape-wise
+# it's a non-bullet line right after a run of bullets — identical to a new
+# heading — but it belongs to the entry ending, not the one about to start.
+_TRAILING_SUMMARY = re.compile(r"^\s*Tech(?:nical)? Stack\s*:", re.IGNORECASE)
+
+
+def _entries(text: str) -> list[str]:
+    """Group each heading with the bullets under it, so the two never separate.
+
+    PDF-extracted resumes have no blank line between one job and the next — a
+    bullet is just the next line after the last one. Packing by raw line would
+    happily split a job's heading (company, title, dates) into one segment and
+    its bullets into the next, and the model receiving only the bullets has no
+    company to attach them to. A new entry starts wherever a non-bullet line
+    follows a bullet: that shape is what separates one job/project from the
+    next, since the heading lines before the first bullet belong to it.
+
+    A trailing "Tech Stack:" summary line is the one common exception to that
+    shape: it comes right after the bullets too, but it describes the entry
+    that's ending, not the one about to start. Treating it like a bullet for
+    grouping purposes (append, don't flush) keeps it attached to its own entry
+    and defers the flush to the heading that actually follows it.
+    """
+    entries: list[str] = []
+    current: list[str] = []
+    entry_open = False
+    for line in text.split("\n"):
+        stays_open = bool(_BULLET.match(line)) or bool(_TRAILING_SUMMARY.match(line))
+        if not stays_open and entry_open:
+            entries.append("\n".join(current))
+            current = []
+            entry_open = False
+        current.append(line)
+        entry_open = entry_open or stays_open
+    if current:
+        entries.append("\n".join(current))
+    return entries
+
+
 def _pieces(text: str) -> list[str]:
     """Break text into units no larger than one segment, cleanest seam first."""
     units = text.split("\n\n")
+    if all(len(u) <= _SEGMENT_CHARS for u in units):
+        return units
+
+    units = _entries(text)
     if all(len(u) <= _SEGMENT_CHARS for u in units):
         return units
 
@@ -269,7 +410,7 @@ def parse_to_chunks(
         chunks.extend(
             _normalize(c, section)
             for c in raw
-            if isinstance(c, dict) and c.get("accomplishment")
+            if isinstance(c, dict) and (c.get("accomplishment") or c.get("context"))
         )
         if on_segment:
             on_segment()
@@ -305,13 +446,22 @@ def _normalize(c: dict, section: str | None = None) -> dict:
     ctype = str(c.get("type", "")).lower().strip()
     if ctype not in _VALID_TYPES:
         ctype = section if section in _VALID_TYPES else "experience"
+    # The model sometimes puts the descriptive text in `context` and leaves
+    # `accomplishment` off the chunk entirely rather than filling both. When
+    # that happens, `context` *is* the accomplishment - treating it as a
+    # separate, still-empty field would silently drop the whole chunk instead.
+    accomplishment = _opt(c.get("accomplishment"), 4000)
+    context = _opt(c.get("context"), 300)
+    if not accomplishment:
+        accomplishment = _opt(c.get("context"), 4000)
+        context = None
     return {
         "type": ctype,
         "title": _opt(c.get("title"), 300) or "Untitled",
-        "context": _opt(c.get("context"), 300),
+        "context": context,
         "company": _opt(c.get("company"), 200),
         "date_range": _opt(c.get("date_range"), 100),
-        "accomplishment": str(c["accomplishment"]).strip(),
+        "accomplishment": accomplishment or "",
         "technologies": [t for t in (_opt(x, 100) for x in (c.get("technologies") or [])) if t],
         "skills": [s for s in (_opt(x, 100) for x in (c.get("skills") or [])) if s],
         "impact": _opt(c.get("impact"), 500),
