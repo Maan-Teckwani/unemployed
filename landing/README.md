@@ -20,17 +20,18 @@ Signing in tells two people apart and gives an address to reach them on. The
 email is stored, is never shown on the wall and is never read back out by any
 page; the avatar is drawn, not taken from the Google account.
 
-Signing in does not store the address by itself. The profile form on `/join`
-says what it is kept for, and finishing that form is the agreement. `auth.ts`
-touches no database at all.
+Signing in stores the address. The `jwt` callback in `auth.ts` writes it on the
+sign-in pass, and the sign-in button sits directly under the sentence saying so,
+which is where the agreement is. There is no separate question and no second
+step. A database that is down at that moment loses the address, not the sign-in.
 
-Rows created before the `email` column existed have none, and cannot be given
-one retroactively: `google_sub` is opaque and Google offers no lookup from it
-to an address. Those people also joined under copy that said the address was
-not stored, so `/join` stops them once with the panel in
-`components/email-consent.tsx` and asks. Both answers are recorded in
-`email_asked_at`, so nobody is asked twice. `npm run email:coverage` reports
-how many have answered which way.
+Rows created before the `email` column existed have none, and it cannot be
+recovered from the row: `google_sub` is opaque and Google offers no lookup from
+it to an address. They fill in the next time that person signs in. To make that
+happen rather than wait for cookies to expire, bump `SESSION_EPOCH` in
+`auth.ts`: any token not carrying the current number is refused and its cookie
+cleared, which signs everyone out on deploy without touching the hosting
+dashboard. `npm run email:coverage` reports how far that has got.
 
 **1. Create the OAuth client**
 

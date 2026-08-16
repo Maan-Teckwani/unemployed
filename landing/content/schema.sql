@@ -12,9 +12,9 @@
 -- absent from the SignupRow type, because that type is serialised into the
 -- HTML every visitor receives.
 --
--- An address is only ever written next to an `email_asked_at`, so "was this
--- person told" is answerable from the row rather than from memory of what the
--- copy said on the day.
+-- An address is only ever written next to an `email_asked_at`, so "when did we
+-- get this" is answerable from the row rather than from memory of which deploy
+-- was live on the day.
 
 create table if not exists signups (
   id         bigint generated always as identity primary key,
@@ -40,28 +40,27 @@ alter table signups add column if not exists google_sub text;
 -- thing they signed up for.
 --
 -- Nullable, and null for everyone who joined before this column existed. Their
--- address was never stored and cannot be recovered: `google_sub` is opaque and
--- Google offers no lookup from it back to an address. The only way those rows
--- ever get filled in is that person coming back to /join and saying yes.
+-- address was never stored and cannot be recovered from the row: `google_sub`
+-- is opaque and Google offers no lookup from it back to an address. Those rows
+-- fill in the next time that person signs in, which is why the session epoch in
+-- auth.ts was bumped: it sends everyone back through Google once.
 alter table signups add column if not exists email text;
 
--- When they were shown what happens to the address and answered.
+-- When the address in the column beside this one was recorded.
 --
--- Set on both answers, because the question is "have we asked", not "did they
--- agree": someone who said no has to stay asked, or they get the same panel
--- every time they open the page. Yes fills `email` in the same statement, no
--- leaves it null. So the two states read cleanly:
+-- Written in the same statement as the address itself, never separately, by
+-- both of the two writes: the insert in app/api/signups when someone fills in
+-- the profile form, and `saveEmail` on every sign-in after that. So an address
+-- with no `email_asked_at` beside it is a bug rather than a state, and the
+-- states read cleanly:
 --
---   email_asked_at is null                 never asked
---   email_asked_at set, email null         asked, said no
---   email_asked_at set, email set          asked, said yes
+--   email_asked_at is null, email null     joined before the column existed
+--   email_asked_at set, email set          recorded, at that time
 --
--- Nothing writes `email` without also writing this, so an address with no
--- `email_asked_at` beside it is a bug rather than a state.
---
--- Null for everyone who joined before this column existed. They signed up under
--- copy that said their address was not stored, so /join stops and asks them
--- once rather than redirecting them past the sentence that replaced it.
+-- The name is older than the current behaviour. It was the timestamp on a
+-- consent panel that /join used to show, back when the address was asked for
+-- rather than taken with the sign-in. Renaming it means a migration on a live
+-- table for no behaviour, so it stays.
 alter table signups add column if not exists email_asked_at timestamptz;
 
 -- The board read.

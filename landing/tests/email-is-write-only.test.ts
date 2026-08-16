@@ -39,14 +39,14 @@ test("the address is still written somewhere, or this file is guarding nothing",
 });
 
 /**
- * The consent invariant, checked in the two places an address is written.
+ * Both writes stamp the time, checked in the two places an address is written.
  *
- * An address with no record of having asked for it is the exact failure this
- * whole change was about: the old code took one from every returning user on a
- * page they were redirected past. Both writes now carry `email_asked_at`, and
- * a future edit that drops it would restore the old behaviour silently.
+ * `email_asked_at` is what lets `npm run email:coverage` tell an address that
+ * was recorded from a row that has none, and it is only trustworthy if it is
+ * never written separately from the address itself. A future edit that drops it
+ * from either statement would leave the column silently half true.
  */
-test("every write of an address also records that we asked", () => {
+test("every write of an address also records when it was taken", () => {
   const update = source.match(/update signups set email[\s\S]*?`/i);
   assert.ok(update, "expected to find the update that stores an address");
   assert.match(update[0], /email_asked_at\s*=\s*now\(\)/i);
@@ -56,19 +56,24 @@ test("every write of an address also records that we asked", () => {
   assert.ok(insert, "expected to find the insert that creates a row");
   assert.ok(
     !/\bemail\b/.test(insert[0]) || /email_asked_at/.test(insert[0]),
-    "the insert writes an address without recording that we asked",
+    "the insert writes an address without recording when it was taken",
   );
 });
 
 /**
- * The `jwt` callback is not allowed to touch the database again.
+ * Signing in is what records the address, and a failure to record it must not
+ * become a failure to sign in.
  *
- * It used to, and that is how addresses were collected from people who never
- * saw the disclosure: /join redirects anyone with a row, so the sign-in pass
- * was the only code they ran. Asking belongs on a page with a button on it.
+ * The write lives in the `jwt` callback because /join redirects anyone who
+ * already has a row, so the sign-in pass is the only code a returning person
+ * runs. That is also the whole reason it has to be wrapped: an unreachable
+ * database there would otherwise turn a cold Neon into a site nobody can get
+ * into, to protect a mailing list.
  */
-test("signing in does not write anything by itself", () => {
+test("signing in records the address, and cannot fail because of it", () => {
   const auth = readFileSync(new URL("../auth.ts", import.meta.url), "utf8");
-  assert.ok(!/from "@\/lib\/db"/.test(auth), "auth.ts must not import the database");
-  assert.ok(!/\bsettleEmailAsk\b/.test(auth), "auth.ts must not settle the email ask");
+  assert.match(auth, /\bsaveEmail\b/, "auth.ts must save the address on sign-in");
+
+  const call = auth.match(/try\s*\{[\s\S]*?saveEmail[\s\S]*?\}\s*catch/);
+  assert.ok(call, "the saveEmail call must be inside a try/catch");
 });

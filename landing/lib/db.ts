@@ -24,7 +24,7 @@ export function db() {
  * There is deliberately no `email` here, and no read query below selects one.
  * This type is handed to client components, which means every field on it is
  * serialised into the HTML that goes to whoever is looking at the page. The
- * address is written by `settleEmailAsk` and read by nothing.
+ * address is written by `saveEmail` and read by nothing.
  */
 export type SignupRow = {
   // bigint, which the driver hands back as a string rather than a number.
@@ -137,50 +137,29 @@ export type ExperienceRow = {
 };
 
 /**
- * Settle the email question for a Google account, whichever way they answered.
+ * Record the address on the Google account that owns this row.
+ *
+ * Called from the `jwt` callback in auth.ts, once per sign-in. Someone who has
+ * signed in but never filled in the profile form has no row yet, so this
+ * updates nothing and the insert in app/api/signups carries the address
+ * instead. Both writes are the same statement in two places, which is why both
+ * are checked by tests/email-is-write-only.test.ts.
  *
  * `email_asked_at` is written in the same statement as the address, never after
- * and never separately, so the two cannot drift: an address in this table is an
- * address someone was asked for. A decline passes `null` and gets the timestamp
- * without the address, which is what stops the panel coming back forever.
+ * and never separately, so an address in this table always sits beside the time
+ * it was taken and `npm run email:coverage` can tell one from the other.
  *
- * `where email_asked_at is null` rather than a plain assignment, so this is
- * idempotent: a second click, or a decline arriving after an accept, cannot
- * move the timestamp or clear an address that is already there.
- *
- * The one caller is app/api/signups/email, which is the one place that asks.
+ * Not conditional on the column being empty: a Google account can change its
+ * address, and the point of keeping one is that it still works.
  *
  * Returns nothing. Nothing on the site reads an address back out.
  */
-export async function settleEmailAsk(sub: string, email: string | null): Promise<void> {
+export async function saveEmail(sub: string, email: string): Promise<void> {
   const sql = db();
   await sql`
     update signups set email = ${email}, email_asked_at = now()
-    where google_sub = ${sub} and email_asked_at is null
+    where google_sub = ${sub}
   `;
-}
-
-/**
- * Whether this account has been asked about their address yet.
- *
- * Phrased on `email_asked_at` rather than on `email is null` on purpose: this
- * answer reaches a page, and a query that mentions the email column is the one
- * thing tests/email-is-write-only.test.ts exists to stop. A timestamp says
- * everything the page needs and nothing about the person. It is also the right
- * question: someone who said no has been asked, and must not be asked again.
- *
- * True for everyone who joined before there was a column to put an address in,
- * which is most of the wall. They are asked once, on /join.
- */
-export async function needsEmailConsent(sub: string): Promise<boolean> {
-  const sql = db();
-  const rows = (await sql`
-    select email_asked_at from signups where google_sub = ${sub} limit 1
-  `) as { email_asked_at: string | null }[];
-  // No row at all is not "needs asking": they have no profile yet, so they are
-  // going through the form, which does the asking itself.
-  if (rows.length === 0) return false;
-  return rows[0].email_asked_at === null;
 }
 
 /**
