@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
 import { saveEmail } from "@/lib/db";
+import { identify, isCurrentEpoch, SESSION_EPOCH } from "@/lib/session";
 
 /**
  * Google sign-in, with the session in a signed cookie rather than the database.
@@ -16,22 +17,9 @@ import { saveEmail } from "@/lib/db";
  * There is no question attached to it: the button people press sits directly
  * under copy that says the address is kept, never shown on the wall and never
  * given to anyone else, so pressing it is the agreement. See lib/copy.ts.
- */
-
-/**
- * Bump this to sign everyone out.
  *
- * Sessions here are self contained cookies, so there is no table of them to
- * delete. A token that does not carry the current epoch is refused below and
- * its cookie cleared, which is the same effect as rotating AUTH_SECRET without
- * needing the hosting dashboard: deploying is what signs people out.
- *
- * It went to 2 when the address started being taken at sign-in, so that the
- * people already holding a cookie come back through Google once and get their
- * address recorded rather than waiting for their session to expire.
+ * SESSION_EPOCH, in lib/session.ts, is how everyone gets signed out.
  */
-const SESSION_EPOCH = 2;
-
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [Google],
   session: { strategy: "jwt" },
@@ -41,16 +29,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // See app/auth-error/page.tsx.
   pages: { error: "/auth-error" },
   callbacks: {
-    async jwt({ token, profile }) {
-      // `profile` is only present on the sign-in pass, so this runs once per
-      // sign-in and the values are then carried by the token on every request
-      // after.
-      if (profile?.sub) {
-        token.sub = profile.sub;
-        token.email = profile.email;
+    async jwt({ token, account, profile, user }) {
+      // `account` is what says this is the sign-in pass, rather than `profile`
+      // or `profile.sub`. Both of those are the provider's response and can in
+      // principle come back thin; `account` is next-auth's own record of the
+      // sign-in and is always there. Getting this wrong is expensive in one
+      // direction: a sign-in mistaken for an ordinary request falls through to
+      // the epoch check below, returns null, and the person cannot sign in at
+      // all. So the test is the one that cannot be empty.
+      if (account) {
+        const { sub, email } = identify(profile, user, token);
+
+        if (sub) token.sub = sub;
+        if (email) token.email = email;
+        // Stamped on the way in, so a sign-in is never refused by the check
+        // below no matter what the provider sent.
         token.epoch = SESSION_EPOCH;
 
-        if (profile.email) {
+        if (sub && email) {
           // The row may not exist yet, in which case this updates nothing and
           // the insert in app/api/signups does the writing instead.
           //
@@ -59,7 +55,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // sign-in, and losing it is a smaller failure than locking people out
           // of the site to protect a mailing list.
           try {
-            await saveEmail(profile.sub, profile.email);
+            await saveEmail(sub, email);
           } catch (error) {
             console.error("email save failed", error);
           }
@@ -69,8 +65,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       // Every request after the sign-in pass. Returning null here clears the
-      // session cookie, which is what makes the epoch above a sign-out switch.
-      if (token.epoch !== SESSION_EPOCH) return null;
+      // session cookie, which is what makes the epoch a sign-out switch.
+      if (!isCurrentEpoch(token)) return null;
 
       return token;
     },

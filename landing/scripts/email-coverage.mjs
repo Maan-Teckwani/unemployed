@@ -35,11 +35,14 @@ const [row] = await sql`
     count(*) filter (
       where email is null and ip_hash <> 'seed-demo'
     )::int                                                     as missing,
-    -- The invariant: an address is only ever written beside a timestamp. This
-    -- should be zero forever. If it is not, something wrote a column directly.
+    -- Addresses with no timestamp beside them. Not a bug and not zero: the
+    -- first version of the sign-in wrote the column on its own, before there
+    -- was a timestamp to write with it, and those rows are still here. Nothing
+    -- in the app can add to this now, and each one is repaired the next time
+    -- that person signs in, because saveEmail writes both columns.
     count(*) filter (
       where email is not null and email_asked_at is null
-    )::int                                                     as orphaned,
+    )::int                                                     as untimed,
     -- Reported separately, so the headcount above the percentages is people.
     count(*) filter (where ip_hash = 'seed-demo')::int         as demo
   from signups
@@ -52,8 +55,9 @@ console.log(`on the wall        ${real}${row.demo > 0 ? `  (+${row.demo} demo ro
 console.log(`address kept       ${row.kept}  (${pct(row.kept)}%)`);
 console.log(`no address yet     ${row.missing}  (${pct(row.missing)}%)`);
 
-if (row.orphaned > 0) {
-  console.warn(`\nwarning: ${row.orphaned} row(s) hold an address with no timestamp beside it.`);
-  console.warn("Nothing in the app can produce that. Find what wrote them.");
-  process.exitCode = 1;
+if (row.untimed > 0) {
+  console.log(
+    `\n${row.untimed} of those addresses predate the timestamp column and have none.`,
+  );
+  console.log("They are repaired on that person's next sign-in. Nothing to do.");
 }

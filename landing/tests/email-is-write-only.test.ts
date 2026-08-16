@@ -77,3 +77,30 @@ test("signing in records the address, and cannot fail because of it", () => {
   const call = auth.match(/try\s*\{[\s\S]*?saveEmail[\s\S]*?\}\s*catch/);
   assert.ok(call, "the saveEmail call must be inside a try/catch");
 });
+
+/**
+ * The sign-in pass is recognised by `account`, and by nothing thinner.
+ *
+ * `profile` and its fields are the provider's response. Keying off one of them
+ * means a thin response is not recognised as a sign-in, falls through to the
+ * epoch check, and returns null: the person is bounced back to a signed-out
+ * page by their own successful sign-in. `account` is next-auth's own record
+ * that a sign-in happened and is always present on that pass.
+ */
+test("the sign-in pass is detected by account, not by the provider payload", () => {
+  const auth = readFileSync(new URL("../auth.ts", import.meta.url), "utf8");
+
+  const branch = auth.match(/if\s*\((.*?)\)\s*\{[\s\S]*?token\.epoch\s*=/);
+  assert.ok(branch, "expected to find the branch that stamps the epoch");
+  assert.equal(
+    branch[1].trim(),
+    "account",
+    "the sign-in branch must test `account` alone",
+  );
+
+  // And the refusal must sit after it, so it can never see a sign-in.
+  assert.ok(
+    auth.indexOf("token.epoch = SESSION_EPOCH") < auth.indexOf("return null"),
+    "the epoch refusal must come after the sign-in branch, not before it",
+  );
+});
