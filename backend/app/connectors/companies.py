@@ -84,7 +84,7 @@ SEED_COMPANIES: list[str] = [
     "Thoughtworks", "Publicis Sapient", "EPAM", "Globant", "Infosys", "Wipro",
     "TCS", "HCLTech", "Tech Mahindra", "LTIMindtree", "Mphasis", "Persistent Systems",
     "Zensar", "Cognizant", "Accenture", "Capgemini", "Deloitte", "PwC", "EY", "KPMG",
-    # --- Remote-first / global startups & modern devtools ---
+    # --- Remote-first / global startups that hire in India ---
     "Automattic", "Zapier", "Doist", "Buffer", "Toggl", "Hotjar", "Aha",
     "Canonical", "Mozilla", "Grammarly", "Notion", "Figma", "Linear", "Vercel",
     "Netlify", "Supabase", "PlanetScale", "Neon", "Render", "Railway",
