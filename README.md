@@ -1,5 +1,3 @@
-# AI Career Assistant
-
 Finds jobs you can actually get, scores them so you can see *why*, and writes a
 tailored resume grounded in work you've really done.
 
@@ -47,7 +45,13 @@ scraped** — you run the search, so your LinkedIn account is never at risk.
 **6. Suggests what to build.** One portfolio project specific to that company,
 aimed at the skills the role wants that your experience can't yet prove.
 
+**7. Maps macro skill gaps & learning roadmaps.** Analyzes all active jobs to
+find the highest-leverage skills holding you back, simulates score lift in real
+time, and designs production-grade project blueprints with weekly milestones and
+one-click Knowledge Base ingestion.
+
 ---
+
 
 ## Setup
 

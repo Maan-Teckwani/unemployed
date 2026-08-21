@@ -219,3 +219,99 @@ class ContactUpdateIn(BaseModel):
 class ProfileOut(ProfileIn):
     id: int
     model_config = {"from_attributes": True}
+
+
+# ---- Skills & Roadmaps -------------------------------------------------------
+class MarketSkillItem(BaseModel):
+    skill: str
+    frequency: int
+    percentage: float
+    is_mastered: bool
+    category: str
+    importance: float
+    potential_score_lift: float
+    sample_companies: list[str] = []
+
+
+class DomainClusterItem(BaseModel):
+    category: str
+    mastered_count: int
+    missing_count: int
+    skills: list[MarketSkillItem] = []
+
+
+class SkillAnalyticsOut(BaseModel):
+    total_jobs_analyzed: int
+    candidate_skills_count: int
+    market_readiness_pct: float
+    top_missing_skills: list[MarketSkillItem] = []
+    top_mastered_skills: list[MarketSkillItem] = []
+    domain_clusters: list[DomainClusterItem] = []
+
+
+class SkillSimulateIn(BaseModel):
+    target_skills: list[str] = Field(min_length=1)
+
+
+class ImpactedJobItem(BaseModel):
+    job_id: int
+    company: str
+    title: str
+    old_score: float
+    new_score: float
+    score_lift: float
+
+
+class SkillSimulateOut(BaseModel):
+    target_skills: list[str]
+    previous_avg_score: float
+    new_avg_score: float
+    avg_lift: float
+    unlocked_jobs_count: int
+    impacted_jobs: list[ImpactedJobItem] = []
+
+
+class RoadmapGenerateIn(BaseModel):
+    target_skills: list[str] = Field(min_length=1)
+    role_family: str = "backend"
+    estimated_weeks: int = Field(default=3, ge=1, le=8)
+
+
+class RoadmapMilestoneItem(BaseModel):
+    week: int
+    title: str
+    objective: str
+    tasks: list[str] = []
+    deliverable: str = ""
+    completed: bool = False
+
+
+class EngineeringChallengeItem(BaseModel):
+    challenge: str
+    solution: str
+    impact: str = ""
+
+
+class RoadmapOut(BaseModel):
+    id: int
+    title: str
+    summary: str
+    role_family: str
+    target_skills: list[str]
+    status: str
+    estimated_weeks: int
+    architecture: str
+    milestones: list[RoadmapMilestoneItem]
+    engineering_challenges: list[EngineeringChallengeItem] = []
+    resume_bullet_preview: str
+    interview_talking_points: list[str] = []
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RoadmapUpdateIn(BaseModel):
+    status: str | None = None
+    milestones: list[dict] | None = None
+

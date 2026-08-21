@@ -22,6 +22,7 @@ from app.api import (
     profile,
     projects,
     resumes,
+    roadmap,
     setup,
     templates,
 )
@@ -69,6 +70,8 @@ app.include_router(pipeline.router)
 app.include_router(setup.router)
 app.include_router(templates.router)
 app.include_router(profile.router)
+app.include_router(roadmap.router)
+
 
 
 @app.get("/health")

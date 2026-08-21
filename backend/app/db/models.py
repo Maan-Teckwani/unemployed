@@ -448,3 +448,42 @@ class IngestionRun(Base):
 
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SkillRoadmap(Base):
+    """A multi-skill project learning roadmap designed to cover candidate macro skill gaps.
+
+    Unlike ProjectIdea (which is 1-to-1 for a specific job), this bridges the
+    highest-leverage missing skills across the entire market into one high-signal,
+    multi-week portfolio project.
+    """
+
+    __tablename__ = "skill_roadmaps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    role_family: Mapped[str] = mapped_column(String(40), default="backend")
+    target_skills: Mapped[list[str]] = mapped_column(StringList, default=list)
+
+    # in_progress | completed | archived
+    status: Mapped[str] = mapped_column(String(20), default="in_progress", index=True)
+    estimated_weeks: Mapped[int] = mapped_column(Integer, default=3)
+    architecture: Mapped[str] = mapped_column(Text, default="")
+
+    # [{week: int, title: str, objective: str, tasks: list[str], deliverable: str, completed: bool}]
+    milestones: Mapped[list] = mapped_column(JSONColumn, default=list)
+
+    # [{challenge: str, solution: str, impact: str}]
+    engineering_challenges: Mapped[list] = mapped_column(JSONColumn, default=list)
+
+    resume_bullet_preview: Mapped[str] = mapped_column(Text, default="")
+    interview_talking_points: Mapped[list[str]] = mapped_column(StringList, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+

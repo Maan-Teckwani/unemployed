@@ -19,9 +19,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const PRIMARY = [
   { href: "/today", label: "Apply today" },
   { href: "/jobs", label: "Jobs" },
+  { href: "/roadmap", label: "Skills & Roadmap" },
   { href: "/manual-jd", label: "Paste JD" },
   { href: "/board", label: "Board" },
 ];
+
 
 export function SiteNav() {
   const { counts, setupIncomplete } = useStack();

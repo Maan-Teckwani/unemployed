@@ -254,6 +254,84 @@ export type Resume = {
   created_at: string;
 };
 
+export type MarketSkillItem = {
+  skill: string;
+  frequency: number;
+  percentage: number;
+  is_mastered: boolean;
+  category: string;
+  importance: number;
+  potential_score_lift: number;
+  sample_companies: string[];
+};
+
+export type DomainCluster = {
+  category: string;
+  mastered_count: number;
+  missing_count: number;
+  skills: MarketSkillItem[];
+};
+
+export type SkillAnalytics = {
+  total_jobs_analyzed: number;
+  candidate_skills_count: number;
+  market_readiness_pct: number;
+  top_missing_skills: MarketSkillItem[];
+  top_mastered_skills: MarketSkillItem[];
+  domain_clusters: DomainCluster[];
+};
+
+export type ImpactedJob = {
+  job_id: number;
+  company: string;
+  title: string;
+  old_score: number;
+  new_score: number;
+  score_lift: number;
+};
+
+export type SkillSimulationResult = {
+  target_skills: string[];
+  previous_avg_score: number;
+  new_avg_score: number;
+  avg_lift: number;
+  unlocked_jobs_count: number;
+  impacted_jobs: ImpactedJob[];
+};
+
+export type RoadmapMilestone = {
+  week: number;
+  title: string;
+  objective: string;
+  tasks: string[];
+  deliverable: string;
+  completed: boolean;
+};
+
+export type EngineeringChallenge = {
+  challenge: string;
+  solution: string;
+  impact: string;
+};
+
+export type SkillRoadmap = {
+  id: number;
+  title: string;
+  summary: string;
+  role_family: string;
+  target_skills: string[];
+  status: "in_progress" | "completed" | "archived";
+  estimated_weeks: number;
+  architecture: string;
+  milestones: RoadmapMilestone[];
+  engineering_challenges: EngineeringChallenge[];
+  resume_bullet_preview: string;
+  interview_talking_points: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+
 export type ResumeTemplate = {
   id: number;
   name: string;
@@ -577,7 +655,44 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getSkillAnalytics: (roleFamily?: string) =>
+    req<SkillAnalytics>(
+      `/skills/analytics${roleFamily ? `?role_family=${encodeURIComponent(roleFamily)}` : ""}`
+    ),
+  simulateSkills: (targetSkills: string[]) =>
+    req<SkillSimulationResult>("/skills/simulate", {
+      method: "POST",
+      body: JSON.stringify({ target_skills: targetSkills }),
+    }),
+  listRoadmaps: () => req<SkillRoadmap[]>("/roadmaps"),
+  generateRoadmap: (body: {
+    target_skills: string[];
+    role_family?: string;
+    estimated_weeks?: number;
+  }) =>
+    req<SkillRoadmap>("/roadmaps/generate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getRoadmap: (id: number) => req<SkillRoadmap>(`/roadmaps/${id}`),
+  updateRoadmap: (
+    id: number,
+    body: { status?: string; milestones?: RoadmapMilestone[] }
+  ) =>
+    req<SkillRoadmap>(`/roadmaps/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  completeRoadmapToKb: (id: number) =>
+    req<{ status: string; message: string; chunk_id: number }>(
+      `/roadmaps/${id}/complete-to-kb`,
+      { method: "POST" }
+    ),
+  deleteRoadmap: (id: number) =>
+    req<void>(`/roadmaps/${id}`, { method: "DELETE" }),
 };
+
 
 // ---------------------------------------------------------------------------
 // The community wall.
