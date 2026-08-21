@@ -473,9 +473,10 @@ export default function RoadmapPage() {
                             {item.potential_score_lift > 0 && (
                               <span className="text-[11px] font-medium text-green-600 dark:text-green-500 flex items-center gap-0.5">
                                 <TrendingUp className="size-3" />
-                                +{item.potential_score_lift}% lift
+                                +{item.potential_score_lift}% on target roles
                               </span>
                             )}
+
                           </div>
 
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">

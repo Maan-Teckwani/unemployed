@@ -176,11 +176,13 @@ def analyze_market_skills(
             / total_active_jobs,
             3,
         )
+        # Average match score lift on the specific jobs that demand this skill
         avg_lift = (
-            round((data["potential_score_lift_sum"] / total_active_jobs) * 100, 2)
+            round((data["potential_score_lift_sum"] / max(1, freq)) * 100, 1)
             if not is_mastered
             else 0.0
         )
+
 
         item = {
             "skill": name.title() if len(name) > 3 else name.upper(),
