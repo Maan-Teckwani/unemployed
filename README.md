@@ -1,3 +1,5 @@
+# AI Career Assistant
+
 Finds jobs you can actually get, scores them so you can see *why*, and writes a
 tailored resume grounded in work you've really done.
 
