@@ -42,6 +42,15 @@ const FILL: Record<State, string> = {
   offer: "bg-state-offer",
   rejected: "bg-state-rejected",
 };
+/** The same five colours as a rule over the count, tying it to its segment. */
+const STROKE: Record<State, string> = {
+  sent: "border-state-sent",
+  test: "border-state-test",
+  interview: "border-state-interview",
+  offer: "border-state-offer",
+  rejected: "border-state-rejected",
+};
+
 const STATE_LABEL = Object.fromEntries(
   STATES.map((s) => [s.id, s.label]),
 ) as Record<State, string>;
@@ -78,25 +87,43 @@ export function Stack() {
       <div className="flex flex-wrap items-end gap-x-10 gap-y-6">
         <Pile model={model} landed={landed} />
 
-        <div className="min-w-0 flex-1 space-y-3 pb-1">
+        {/* basis-64, not basis-0: with a zero basis this column never asked for
+            room, so on a phone it took whatever was left beside the 250px pile
+            — about forty pixels — and squeezed five columns into it rather than
+            wrapping underneath. */}
+        <div className="min-w-0 flex-1 basis-64 space-y-5 pb-1">
           {/* Today is the primary number, because it is the only one you can
               still change. The total is history; this is the ask. */}
-          <div>
-            <p className="flex items-baseline gap-2">
+          <div className="space-y-2.5">
+            <p className="flex items-baseline gap-2.5">
               <span className="font-serif text-display-xl text-foreground">{today}</span>
               <span className="data text-data-lg text-muted-foreground">
-                of {target} today
+                of {target}
               </span>
+              <span className="meta">today</span>
             </p>
             <Slots done={today} target={target} />
           </div>
 
-          <p className="data text-data text-muted-foreground">
-            <Odometer value={total} className="text-foreground" /> in the pile
-            {nextMilestone && ` · ${nextMilestone - total} to ${nextMilestone}`}
-          </p>
+          {/* The pile and its shape, as one block: the count, how far to the
+              next milestone, and what became of everything in it. They used to
+              be three separate lines at three sizes, which read as three
+              unrelated facts stacked by accident. */}
+          <div className="space-y-2.5 border-t border-paper-edge/60 pt-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <p className="data text-data text-muted-foreground">
+                <Odometer value={total} className="text-foreground" /> in the pile
+              </p>
+              {nextMilestone && total > 0 && (
+                <p className="meta shrink-0">
+                  {nextMilestone - total} to {nextMilestone}
+                </p>
+              )}
+            </div>
 
-          <Summary byState={byState} total={total} />
+            <FunnelBar byState={byState} total={total} />
+            <Summary byState={byState} total={total} />
+          </div>
         </div>
       </div>
 
@@ -217,11 +244,11 @@ function HowItWorks({ defaultOpen }: { defaultOpen: boolean }) {
 function Slots({ done, target }: { done: number; target: number }) {
   const shown = Math.max(target, done);
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1" aria-hidden>
+    <div className="flex flex-wrap items-center gap-1.5" aria-hidden>
       {Array.from({ length: Math.min(shown, 12) }, (_, i) => (
         <span
           key={i}
-          className={`h-1 w-6 rounded-full transition-colors ${
+          className={`h-1.5 w-8 rounded-full transition-colors ${
             i < done ? "bg-foreground" : "bg-muted"
           }`}
         />
@@ -232,12 +259,49 @@ function Slots({ done, target }: { done: number; target: number }) {
 }
 
 /**
- * The funnel, in one line.
+ * The pile's shape, in one bar.
  *
- * This replaced a five-item legend plus a paragraph explaining what the colours
- * meant. The counts were always the useful part; the paragraph was a manual
- * pinned to the screen you open every morning, and the tooltips say the same
- * thing at the moment you actually wonder.
+ * Five counts side by side answer "how many", and leave "how much of the pile"
+ * to arithmetic — which is the question the funnel is actually for. Segments
+ * are proportional, and each one keeps a floor of a few pixels so the single
+ * offer in two hundred is still a mark you can see rather than a rounding
+ * error. Purely a picture of the numbers listed underneath, hence aria-hidden.
+ */
+function FunnelBar({
+  byState,
+  total,
+}: {
+  byState: Record<State, number>;
+  total: number;
+}) {
+  if (total === 0) {
+    return <div aria-hidden className="h-2 w-full rounded-full bg-muted/60" />;
+  }
+
+  return (
+    <div aria-hidden className="flex h-2 w-full gap-px overflow-hidden rounded-full">
+      {STATES.filter((s) => byState[s.id] > 0).map((s) => (
+        <span
+          key={s.id}
+          className={FILL[s.id]}
+          style={{ flexGrow: byState[s.id], minWidth: 3 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The funnel, as columns rather than a sentence.
+ *
+ * Wrapped inline, the five states broke wherever the width ran out, so the
+ * counts landed at five different x positions and the row read as a legend for
+ * the bar instead of as figures worth comparing. A fixed grid gives every count
+ * a column of its own, and the label sits under the number where the eye
+ * already expects to find it.
+ *
+ * The colour swatch is gone: the bar above is the colour key now, and repeating
+ * it here was the third time the same five hues appeared in one block.
  */
 function Summary({
   byState,
@@ -247,27 +311,23 @@ function Summary({
   total: number;
 }) {
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+    <ul className="grid grid-cols-3 gap-x-4 gap-y-3 pt-1 sm:grid-cols-5">
       {STATES.map((s) => {
         const n = byState[s.id];
         return (
           <li
             key={s.id}
             title={s.hint}
-            className={`flex items-center gap-1.5 ${
-              total > 0 && n === 0 ? "opacity-40" : ""
+            // Dimmed at zero, empty pile included: five colours at full
+            // strength over five blanks looks like data that failed to load.
+            className={`min-w-0 border-t-2 pt-1.5 ${STROKE[s.id]} ${
+              n === 0 ? "opacity-40" : ""
             }`}
           >
-            <span
-              className={`h-2.5 w-3 rounded-[1px] ${FILL[s.id]} ${
-                total === 0 ? "opacity-40" : ""
-              }`}
-              aria-hidden
-            />
             {total > 0 && (
-              <span className="data text-data text-foreground">{n}</span>
+              <div className="data text-data-lg text-foreground">{n}</div>
             )}
-            <span className="meta">{s.label}</span>
+            <div className="meta truncate">{s.label}</div>
           </li>
         );
       })}
