@@ -60,8 +60,6 @@ export default function RoadmapPage() {
         if (!current) return;
         setAnalytics(data);
         setRoadmaps(list);
-        // Open the newest on arrival, but never fight a choice already made.
-        setExpandedId((expanded) => expanded ?? list[0]?.id ?? null);
       })
       .catch(() => {}) // backend not reachable yet
       .finally(() => {
@@ -284,7 +282,7 @@ export default function RoadmapPage() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-2">
               {roadmaps.map((roadmap) => (
                 <RoadmapCard
                   key={roadmap.id}

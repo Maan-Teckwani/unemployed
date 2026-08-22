@@ -5,7 +5,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   Clock,
   Compass,
   Copy,
@@ -23,7 +23,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 /**
- * One project blueprint: what to build, week by week, and what it would prove.
+ * One project blueprint, collapsed to a single row until you ask for it.
+ *
+ * Collapsed, a card is a title, where it has got to, and what it would cover —
+ * enough to choose between projects with several on screen at once. Everything
+ * that only matters once you have chosen lives behind the click.
  *
  * "Add to Knowledge Base" stays disabled until every milestone is ticked. The
  * Knowledge Base is the evidence a resume is built from, and a plan you have
@@ -52,106 +56,121 @@ export function RoadmapCard({
   const finished = total > 0 && done === total;
 
   return (
-    <Card className="overflow-hidden border-2">
-      <div className="space-y-4 p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1.5">
+    <Card className="gap-0 overflow-hidden py-0">
+      <button
+        type="button"
+        onClick={onToggleExpanded}
+        aria-expanded={expanded}
+        className="w-full cursor-pointer px-4 py-3.5 text-left transition-colors hover:bg-muted/40"
+      >
+        <div className="flex items-center gap-3">
+          {expanded ? (
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          )}
+
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold">{roadmap.title}</h3>
-              <Badge variant={roadmap.status === "completed" ? "default" : "secondary"}>
-                {roadmap.status === "completed" ? (
+              <span className="truncate text-sm font-medium">{roadmap.title}</span>
+              {roadmap.status === "completed" ? (
+                <Badge variant="default">
                   <span className="flex items-center gap-1">
                     <CheckCircle2 className="size-3 text-green-500" />
                     In your Knowledge Base
                   </span>
-                ) : (
-                  "In progress"
-                )}
-              </Badge>
-              <Badge variant="outline" className="text-xs capitalize">
-                {roadmap.role_family}
-              </Badge>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                </Badge>
+              ) : (
+                <Badge variant="secondary">In progress</Badge>
+              )}
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
                 <Clock className="size-3" />
                 {roadmap.estimated_weeks} weeks
               </span>
+              <span className="capitalize">{roadmap.role_family}</span>
+              <span>{roadmap.target_skills.join(", ")}</span>
             </div>
-            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              {roadmap.summary}
-            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {roadmap.status !== "completed" && (
-              <Button
-                size="sm"
-                onClick={onAddToKb}
-                disabled={!finished}
-                title={
-                  finished
-                    ? "Add this project to your Knowledge Base"
-                    : "Tick every milestone once you have actually built it"
-                }
-              >
-                <Rocket className="mr-1.5 size-3.5" />
-                Add to Knowledge Base
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onDelete}
-              className="text-muted-foreground hover:text-destructive"
-              title="Delete roadmap"
-            >
-              <Trash2 className="size-4" />
-            </Button>
+          <div className="hidden w-40 shrink-0 sm:block">
+            <div className="mb-1 text-right text-xs text-muted-foreground">
+              {done} of {total} milestones
+            </div>
+            <SkillBar value={progressPct} className="h-1.5" />
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-xs font-medium text-muted-foreground">
-            Target skills:
-          </span>
-          {roadmap.target_skills.map((skill) => (
-            <Badge key={skill} variant="secondary" className="text-xs">
-              {skill}
-            </Badge>
-          ))}
-        </div>
-
-        <div className="space-y-1.5 pt-2">
-          <div className="flex justify-between text-xs">
-            <span className="font-medium">Progress</span>
-            <span className="font-medium text-muted-foreground">
-              {done} of {total} milestones done ({progressPct}%)
-            </span>
-          </div>
-          <SkillBar value={progressPct} className="h-2" />
-        </div>
-
-        <div className="flex justify-center pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleExpanded}
-            className="text-xs text-muted-foreground"
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label="Delete roadmap"
+            title="Delete roadmap"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
           >
-            {expanded ? (
-              <>
-                Hide the blueprint <ChevronUp className="ml-1 size-3.5" />
-              </>
-            ) : (
-              <>
-                Show the blueprint <ChevronDown className="ml-1 size-3.5" />
-              </>
-            )}
-          </Button>
+            <Trash2 className="size-4" />
+          </span>
         </div>
-      </div>
+      </button>
 
       {expanded && (
         <div className="space-y-6 border-t bg-muted/20 p-6">
+          <div className="space-y-4">
+            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              {roadmap.summary}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs font-medium text-muted-foreground">
+                Target skills:
+              </span>
+              {roadmap.target_skills.map((skill) => (
+                <Badge key={skill} variant="secondary" className="text-xs">
+                  {skill}
+                </Badge>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-60 flex-1 space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="font-medium">Progress</span>
+                  <span className="font-medium text-muted-foreground">
+                    {done} of {total} milestones done ({progressPct}%)
+                  </span>
+                </div>
+                <SkillBar value={progressPct} className="h-2" />
+              </div>
+
+              {roadmap.status !== "completed" && (
+                <Button
+                  size="sm"
+                  onClick={onAddToKb}
+                  disabled={!finished}
+                  title={
+                    finished
+                      ? "Add this project to your Knowledge Base"
+                      : "Tick every milestone once you have actually built it"
+                  }
+                >
+                  <Rocket className="mr-1.5 size-3.5" />
+                  Add to Knowledge Base
+                </Button>
+              )}
+            </div>
+          </div>
+
           {roadmap.architecture && (
             <div className="space-y-2 rounded-lg border bg-card p-4">
               <h4 className="flex items-center gap-2 text-sm font-medium">
