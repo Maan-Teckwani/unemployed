@@ -18,6 +18,8 @@ Rules:
 5. Provide realistic technical challenges, interview talking points, and a STAR resume bullet point.
 6. NEVER invent performance numbers. The project has not been built yet, so the resume
    bullet describes what was built and why, and leaves measured figures to the candidate.
+7. Every field holds the finished text and nothing else. Never repeat a field's name or
+   its description back as a label — "resume_bullet_preview" is the sentence itself.
 
 Return JSON adhering to this exact schema:
 {
@@ -41,7 +43,7 @@ Return JSON adhering to this exact schema:
       "impact": "Measurable benefit"
     }
   ],
-  "resume_bullet_preview": "STAR-format bullet point: action verb, what was built, technologies used. No invented metrics.",
+  "resume_bullet_preview": "Implemented <system> with <technologies>, handling <the hard part>.",
   "interview_talking_points": [
     "Tradeoff or design decision 1 to discuss with interviewers",
     "Tradeoff or design decision 2 to discuss with interviewers"
@@ -80,6 +82,26 @@ def generate_roadmap(
 
     # High-quality deterministic fallback if LLM times out or gives invalid schema
     return _fallback_roadmap(target_skills, role_family, estimated_weeks, candidate_strengths)
+
+
+# "STAR-format bullet point: Implemented a Kubernetes platform..." — the model
+# copying the schema's own words back as a label. Harmless in a JSON field, less
+# so one click later, when that string is the line sitting on a resume.
+_BULLET_LABELS = ("bullet", "star")
+
+
+def _clean_bullet(text: str) -> str:
+    """Drop a label the model prefixed to the bullet instead of just writing it.
+
+    Only a short head is eligible, and only one naming the thing it labels, so a
+    real bullet that happens to contain a colon keeps everything it said.
+    """
+    bullet = str(text).strip()
+    head, colon, rest = bullet.partition(":")
+    if colon and len(head) <= 60 and any(w in head.lower() for w in _BULLET_LABELS):
+        bullet = rest
+    return bullet.strip().strip('"').strip()
+
 
 
 def _is_valid_roadmap(data: dict) -> bool:
@@ -132,12 +154,12 @@ def _format_roadmap(
         "architecture": str(data.get("architecture", "")).strip(),
         "milestones": milestones,
         "engineering_challenges": challenges,
-        "resume_bullet_preview": str(
+        "resume_bullet_preview": _clean_bullet(
             data.get(
                 "resume_bullet_preview",
                 f"Built and deployed a high-throughput service with {', '.join(target_skills[:3])}.",
             )
-        ).strip(),
+        ),
         "interview_talking_points": [
             str(p) for p in data.get("interview_talking_points", []) if p
         ],

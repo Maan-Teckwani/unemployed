@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.embeddings import embed_passage
-from app.ai.roadmap import generate_roadmap
+from app.ai.roadmap import _clean_bullet, generate_roadmap
 from app.ai.skill_analytics import analyze_market_skills, simulate_skill_acquisition
 from app.db.models import KBChunk, SkillRoadmap
 from app.db.session import get_db
@@ -123,8 +123,11 @@ def complete_to_kb(roadmap_id: int, db: Session = Depends(get_db)) -> dict:
     # Compose text for the main project chunk
     technologies = list(roadmap.target_skills or [])
     tech_str = ", ".join(technologies)
+    # Cleaned again here, not only at generation: roadmaps saved before the
+    # generator learned to strip these still carry the label, and this is the
+    # step that turns the line into resume evidence.
     bullet = (
-        roadmap.resume_bullet_preview
+        _clean_bullet(roadmap.resume_bullet_preview)
         or f"Built {roadmap.title} leveraging {tech_str} to solve high-volume distributed challenges."
     )
 

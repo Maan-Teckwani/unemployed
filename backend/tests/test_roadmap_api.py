@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.ai.roadmap import _clean_bullet
 from app.api import roadmap as roadmap_api
 from app.db.models import KBChunk, SkillRoadmap
 from app.db.session import Base
@@ -101,6 +102,20 @@ def test_unknown_status_is_rejected(db):
             created.id, RoadmapUpdateIn(status="done-ish"), db=db
         )
     assert err.value.status_code == 422
+
+
+def test_model_label_is_stripped_from_the_bullet():
+    """The model copies the schema's wording back often enough that one click
+    put "STAR-format bullet point: ..." into a real Knowledge Base."""
+    assert (
+        _clean_bullet("STAR-format bullet point: Implemented a Kubernetes platform.")
+        == "Implemented a Kubernetes platform."
+    )
+    assert _clean_bullet("STAR format: Built a thing.") == "Built a thing."
+
+    # A colon inside a real bullet is not a label, and keeps its sentence whole.
+    intact = "Implemented a platform with Docker: one container per service."
+    assert _clean_bullet(intact) == intact
 
 
 def test_generated_bullet_carries_no_invented_metrics(db):
