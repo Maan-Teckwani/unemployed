@@ -72,8 +72,6 @@ app.include_router(templates.router)
 app.include_router(profile.router)
 app.include_router(roadmap.router)
 
-
-
 @app.get("/health")
 def health(db: Session = Depends(get_db)) -> dict:
     """Liveness + DB connectivity check."""

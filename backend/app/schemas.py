@@ -244,6 +244,8 @@ class SkillAnalyticsOut(BaseModel):
     total_jobs_analyzed: int
     candidate_skills_count: int
     market_readiness_pct: float
+    missing_skills_count: int = 0
+    mastered_skills_count: int = 0
     top_missing_skills: list[MarketSkillItem] = []
     top_mastered_skills: list[MarketSkillItem] = []
     domain_clusters: list[DomainClusterItem] = []
@@ -314,4 +316,3 @@ class RoadmapOut(BaseModel):
 class RoadmapUpdateIn(BaseModel):
     status: str | None = None
     milestones: list[dict] | None = None
-

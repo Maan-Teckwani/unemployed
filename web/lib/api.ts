@@ -276,6 +276,8 @@ export type SkillAnalytics = {
   total_jobs_analyzed: number;
   candidate_skills_count: number;
   market_readiness_pct: number;
+  missing_skills_count: number;
+  mastered_skills_count: number;
   top_missing_skills: MarketSkillItem[];
   top_mastered_skills: MarketSkillItem[];
   domain_clusters: DomainCluster[];
@@ -330,7 +332,6 @@ export type SkillRoadmap = {
   created_at: string;
   updated_at: string;
 };
-
 
 export type ResumeTemplate = {
   id: number;
@@ -692,7 +693,6 @@ export const api = {
   deleteRoadmap: (id: number) =>
     req<void>(`/roadmaps/${id}`, { method: "DELETE" }),
 };
-
 
 // ---------------------------------------------------------------------------
 // The community wall.

@@ -24,7 +24,6 @@ const PRIMARY = [
   { href: "/board", label: "Board" },
 ];
 
-
 export function SiteNav() {
   const { counts, setupIncomplete } = useStack();
 

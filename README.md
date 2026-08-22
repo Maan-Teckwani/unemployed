@@ -54,7 +54,6 @@ one-click Knowledge Base ingestion.
 
 ---
 
-
 ## Setup
 
 **You need nothing set up first.** On Windows and macOS the script installs

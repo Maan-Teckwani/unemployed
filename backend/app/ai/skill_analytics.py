@@ -5,7 +5,7 @@ cross-references the candidate's verified Knowledge Base, and quantifies the
 exact score lift of acquiring specific skills.
 """
 from collections import defaultdict
-import re
+from copy import copy
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from app.ai.match import (
     CandidateIndex,
     score as compute_full_score,
 )
-from app.db.models import Job, JobEmbedding, JobRequirements, KBChunk, Match, Preferences
+from app.db.models import Job, JobEmbedding, JobRequirements, KBChunk, Preferences
 from app.ingestion.role_family import classify
 
 # Skill domain categorization rules
@@ -108,9 +108,15 @@ def analyze_market_skills(
         if role_family and role_family != "all" and job_family != role_family:
             continue
 
-        total_active_jobs += 1
         req_skills = list(reqs.required_skills or []) if reqs else []
         pref_skills = list(reqs.preferred_skills or []) if reqs else []
+        # A job whose requirements have not been extracted yet says nothing about
+        # skills. Counting it in the denominator would report "wanted in 3 jobs
+        # (2%)" for a skill named by 3 of the 5 postings we can actually read.
+        if not req_skills and not pref_skills:
+            continue
+
+        total_active_jobs += 1
 
         # Track required skills (weighted higher for coverage lift)
         num_req = max(1, len(req_skills))
@@ -152,6 +158,8 @@ def analyze_market_skills(
             "total_jobs_analyzed": 0,
             "candidate_skills_count": len(candidate.terms),
             "market_readiness_pct": 0.0,
+            "missing_skills_count": 0,
+            "mastered_skills_count": 0,
             "top_missing_skills": [],
             "top_mastered_skills": [],
             "domain_clusters": [],
@@ -182,7 +190,6 @@ def analyze_market_skills(
             if not is_mastered
             else 0.0
         )
-
 
         item = {
             "skill": name.title() if len(name) > 3 else name.upper(),
@@ -240,6 +247,10 @@ def analyze_market_skills(
         "total_jobs_analyzed": total_active_jobs,
         "candidate_skills_count": len(candidate.terms),
         "market_readiness_pct": readiness,
+        # The lists are the top slice; the counts are the whole truth, so the
+        # summary cards say "31 gaps" rather than the 16 that fit on screen.
+        "missing_skills_count": len(missing_items),
+        "mastered_skills_count": len(mastered_items),
         "top_missing_skills": missing_items[:16],
         "top_mastered_skills": mastered_items[:16],
         "domain_clusters": domain_clusters,
@@ -261,8 +272,9 @@ def simulate_skill_acquisition(
         if canonical:
             augmented_terms.add(canonical)
 
-    augmented_candidate = CandidateIndex([])
-    augmented_candidate.vectors = candidate.vectors
+    # A shallow copy keeps the (read-only) embedding matrix and swaps in the
+    # widened term set, so the simulated candidate is the real one plus skills.
+    augmented_candidate = copy(candidate)
     augmented_candidate.terms = augmented_terms
     augmented_candidate.text = (
         candidate.text + " " + " ".join(_norm(s) for s in target_skills)
@@ -272,10 +284,9 @@ def simulate_skill_acquisition(
 
     # Fetch active jobs and their requirements + embeddings + matches
     stmt = (
-        select(Job, JobRequirements, JobEmbedding, Match)
+        select(Job, JobRequirements, JobEmbedding)
         .join(JobRequirements, Job.id == JobRequirements.job_id)
         .join(JobEmbedding, Job.id == JobEmbedding.job_id)
-        .outerjoin(Match, Job.id == Match.job_id)
         .where(Job.status == "active")
     )
     rows = db.execute(stmt).all()
@@ -295,7 +306,7 @@ def simulate_skill_acquisition(
     impacted = []
     unlocked_count = 0
 
-    for job, reqs, emb, existing_match in rows:
+    for job, reqs, emb in rows:
         requirements_dict = {
             "required_skills": list(reqs.required_skills or []),
             "preferred_skills": list(reqs.preferred_skills or []),
@@ -314,17 +325,16 @@ def simulate_skill_acquisition(
             preferences=preferences,
         )
 
-        old_score = (
-            existing_match.score
-            if existing_match
-            else compute_full_score(
-                job=job,
-                requirements=requirements_dict,
-                job_vector=emb.embedding,
-                candidate=candidate,
-                preferences=preferences,
-            )["score"]
-        )
+        # Both sides come from the same scorer on purpose. The stored Match may
+        # be a cheap-tier "estimated" score, and differencing that against a full
+        # score would report the change of tier as if it were the skill's lift.
+        old_score = compute_full_score(
+            job=job,
+            requirements=requirements_dict,
+            job_vector=emb.embedding,
+            candidate=candidate,
+            preferences=preferences,
+        )["score"]
 
         new_score = new_result["score"]
         lift = round(new_score - old_score, 4)
