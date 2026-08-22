@@ -501,6 +501,8 @@ export const copy = {
     dragHint: "Drag the wall to move around it. More people load as you go.",
     you: "You",
     youAria: "You, pinned to the front of the wall",
+    maker: "Maker",
+    contributor: "Contributor",
     loadingMore: "Loading more people.",
     personAria: (name: string) => `Placement snippets from ${name}`,
     personLoading: "Looking that up.",

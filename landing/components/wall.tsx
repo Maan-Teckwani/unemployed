@@ -8,6 +8,7 @@ import { PersonExperiences } from "./person-experiences";
 import { usePeople } from "./people-provider";
 import { useCrowd, useLoadOnApproach } from "./use-crowd";
 import { usePan } from "./use-pan";
+import { highlightFor } from "@/lib/contributors";
 import { countryName } from "@/lib/countries";
 import { copy } from "@/lib/copy";
 import type { CrowdPage, SignupRow } from "@/lib/db";
@@ -92,6 +93,7 @@ export function Wall({ page, me }: { page: CrowdPage; me: SignupRow | null }) {
                 >
                   {people.map((person) => {
                     const isMe = me !== null && person.id === me.id;
+                    const highlight = highlightFor(person.id);
                     return (
                       <li key={person.id}>
                         <button
@@ -100,10 +102,21 @@ export function Wall({ page, me }: { page: CrowdPage; me: SignupRow | null }) {
                           aria-label={copy.wall.personAria(person.name)}
                           className="wall-tile focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                           data-me={isMe || undefined}
+                          data-highlight={highlight ?? undefined}
                         >
                           <span className="wall-tile__face">
                             <AvatarImage seed={person.seed} gender={person.gender} />
                             {isMe && <span className="wall-tile__you">{copy.wall.you}</span>}
+                            {/* One pill per face. Looking at your own row, "You"
+                                is the more useful of the two, and you already
+                                know which of these you are. */}
+                            {!isMe && highlight && (
+                              <span className="wall-tile__role">
+                                {highlight === "maker"
+                                  ? copy.wall.maker
+                                  : copy.wall.contributor}
+                              </span>
+                            )}
                           </span>
                           <span className="mt-2 w-full truncate text-xs font-medium">
                             {person.name}

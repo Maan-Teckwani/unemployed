@@ -2,6 +2,8 @@ import "server-only";
 
 import { neon } from "@neondatabase/serverless";
 
+import { PINNED_IDS } from "./contributors";
+
 /**
  * The one connection to Neon.
  *
@@ -79,6 +81,25 @@ export async function countSignups(): Promise<number> {
   return rows[0]?.total ?? 0;
 }
 
+/**
+ * The rows behind a set of ids, in the order the ids were given.
+ *
+ * Postgres has no opinion about the order of an `= any` result, and the caller
+ * here is a hand written list where the order is the point, so it is restored
+ * afterwards. An id with no row is simply absent, which is what should happen
+ * when someone in the list has not joined, or has deleted their profile.
+ */
+export async function signupsByIds(ids: readonly string[]): Promise<SignupRow[]> {
+  if (ids.length === 0) return [];
+  const sql = db();
+  const rows = (await sql`
+    select id, name, country, gender, seed, created_at
+    from signups where id = any(${[...ids]}::bigint[])
+  `) as SignupRow[];
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  return rows.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+}
+
 /** What a page that draws faces needs: some of the wall, and the size of it. */
 export type CrowdPage = {
   people: SignupRow[];
@@ -86,6 +107,11 @@ export type CrowdPage = {
   total: number;
   /** Passed back as `?cursor=` for the next page. Null when there is no next page. */
   cursor: string | null;
+  /**
+   * The maker and the contributors, shipped with the first page so they are on
+   * screen the moment the wall is, for everybody, whatever the wall's size.
+   */
+  pinned: SignupRow[];
 };
 
 /** How many faces the server sends before the browser has to ask for more. */
@@ -101,15 +127,26 @@ export const CROWD_PAGE = 200;
  */
 export async function crowdPage(): Promise<CrowdPage> {
   try {
-    const [people, total] = await Promise.all([recentSignups(CROWD_PAGE), countSignups()]);
+    // The pinned lookup catches its own failure. It is a decoration on a wall
+    // that reads perfectly well without it, so it must never be the reason
+    // nobody gets any faces at all.
+    const [people, total, pinned] = await Promise.all([
+      recentSignups(CROWD_PAGE),
+      countSignups(),
+      signupsByIds(PINNED_IDS).catch((error) => {
+        console.error("pinned people unavailable", error);
+        return [] as SignupRow[];
+      }),
+    ]);
     return {
       people,
       total,
       cursor: people.length === CROWD_PAGE ? (people[people.length - 1]?.id ?? null) : null,
+      pinned,
     };
   } catch (error) {
     console.error("wall unavailable", error);
-    return { people: [], total: 0, cursor: null };
+    return { people: [], total: 0, cursor: null, pinned: [] };
   }
 }
 

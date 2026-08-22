@@ -85,10 +85,20 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* The one colour on this page that is not inside an avatar.
+     It marks the people who built the thing, on the wall and in the hero, and
+     it is deliberately the only exception: a second accent anywhere and this
+     stops reading as a mark and starts reading as a colour code. Amber because
+     it survives both grounds without glowing at anyone. */
+  --contributor: oklch(0.7 0.15 68);
+  --contributor-ink: oklch(0.22 0.03 68);
 }
 
 .dark {
   color-scheme: dark;
+  --contributor: oklch(0.79 0.15 72);
+  --contributor-ink: oklch(0.2 0.03 68);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -412,6 +422,39 @@ summary::-webkit-details-marker {
   box-shadow: 0 0 0 2px var(--background), 0 0 0 3px var(--foreground);
 }
 
+/* The people who built this, in the drifting crowd.
+   Placed after the dark rule and after [data-me] on purpose: all three set the
+   same properties at the same specificity, so source order is what decides, and
+   a ring that vanished on the dark theme would be the whole feature gone. */
+.hero-board__face[data-highlight] img {
+  border-color: var(--contributor);
+}
+
+.hero-board__face[data-highlight="contributor"] img {
+  opacity: 0.85;
+  box-shadow:
+    0 0 0 1.5px var(--contributor),
+    0 0 9px color-mix(in oklab, var(--contributor) 45%, transparent);
+}
+
+/* Whose project it is. Same colour, more of it: full strength face, a heavier
+   ring and a glow with room to spread, so the difference reads as rank rather
+   than as two unrelated marks. */
+.hero-board__face[data-highlight="maker"] img {
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--contributor),
+    0 0 20px 2px color-mix(in oklab, var(--contributor) 62%, transparent);
+}
+
+.dark .hero-board__face[data-highlight="contributor"] img {
+  opacity: 0.8;
+}
+
+.dark .hero-board__face[data-highlight="maker"] img {
+  opacity: 1;
+}
+
 .hero-board__you {
   position: absolute;
   top: -0.5rem;
@@ -532,6 +575,43 @@ summary::-webkit-details-marker {
 .wall-tile[data-me] {
   background: color-mix(in oklab, var(--muted) 70%, transparent);
   box-shadow: inset 0 0 0 1px var(--foreground);
+}
+
+/* The same two rings on the wall page, where the faces sit still and can carry
+   a word as well. The tile keeps its own hover and focus treatment; only the
+   avatar inside it is marked. */
+.wall-tile[data-highlight] .wall-tile__face img {
+  border-color: var(--contributor);
+}
+
+.wall-tile[data-highlight="contributor"] .wall-tile__face img {
+  box-shadow:
+    0 0 0 1.5px var(--contributor),
+    0 0 9px color-mix(in oklab, var(--contributor) 45%, transparent);
+}
+
+.wall-tile[data-highlight="maker"] .wall-tile__face img {
+  box-shadow:
+    0 0 0 2px var(--contributor),
+    0 0 20px 2px color-mix(in oklab, var(--contributor) 62%, transparent);
+}
+
+/* Why the ring is there, in a word. The pill sits exactly where "You" sits, and
+   the two are mutually exclusive for that reason. */
+.wall-tile__role {
+  position: absolute;
+  bottom: -0.35rem;
+  left: 50%;
+  translate: -50% 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  background: var(--contributor);
+  color: var(--contributor-ink);
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .wall-tile__you {

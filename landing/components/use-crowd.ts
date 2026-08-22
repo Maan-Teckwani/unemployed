@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { usePeople } from "./people-provider";
+import { orderWall } from "@/lib/wall-order";
 import type { CrowdPage, SignupRow } from "@/lib/db";
 
 /**
@@ -72,23 +73,13 @@ export function useCrowd(page: CrowdPage, me: SignupRow | null) {
     }
   }, [cursor]);
 
-  /**
-   * You first, then anyone who joined while you were looking, then the wall.
-   *
-   * Pinning is a move rather than a copy: the id is already in `seen` by the
-   * time the pages are walked, so you appear once, at the front, however deep
-   * into the wall your own row actually sits.
-   */
-  const people = useMemo(() => {
-    const seen = new Set<string>();
-    const out: SignupRow[] = [];
-    for (const row of [...(me ? [me] : []), ...added, ...rows]) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      out.push(row);
-    }
-    return out;
-  }, [me, added, rows]);
+  // You, then the people who built this, then whoever joined while you were
+  // looking, then the wall. The rule itself lives in lib/wall-order so the hero
+  // and the wall page cannot drift apart, and so it can be tested.
+  const people = useMemo(
+    () => orderWall({ me, pinned: page.pinned, added, rows }),
+    [me, page.pinned, added, rows],
+  );
 
   // Anyone who joined in this tab is not in the number the server counted.
   const extra = added.filter((row) => !rows.some((known) => known.id === row.id)).length;

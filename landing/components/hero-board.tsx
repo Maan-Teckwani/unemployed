@@ -1,6 +1,7 @@
 "use client";
 
 import { avatarSrc } from "./avatar";
+import { highlightFor } from "@/lib/contributors";
 import { useCrowd } from "./use-crowd";
 import { useDrift } from "./use-drift";
 import { usePan } from "./use-pan";
@@ -98,6 +99,7 @@ export function HeroBoard({ page, me }: { page: CrowdPage; me: SignupRow | null 
       <div className={`hero-board__grid${looping ? " hero-board__grid--looping" : ""}`}>
         {shown.map((person, i) => {
           const isMe = me !== null && person.id === me.id;
+          const highlight = highlightFor(person.id);
           return (
             <span
               key={
@@ -109,6 +111,10 @@ export function HeroBoard({ page, me }: { page: CrowdPage; me: SignupRow | null 
               }
               className="hero-board__face"
               data-me={isMe || undefined}
+              // The ring is the whole marking here. No pill: the hero keeps
+              // names hidden until you point at one, and a caption riding on
+              // every copy of a drifting face is the opposite of quiet.
+              data-highlight={highlight ?? undefined}
               // The two ends of one run. The drift measures between them to
               // know how far it travels before it can start over.
               data-loop-from={i === tail.length || undefined}
