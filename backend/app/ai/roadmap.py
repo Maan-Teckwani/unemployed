@@ -16,6 +16,8 @@ Rules:
 3. The project MUST deeply integrate ALL target skills requested.
 4. Each milestone must have concrete, verifiable engineering deliverables and tasks.
 5. Provide realistic technical challenges, interview talking points, and a STAR resume bullet point.
+6. NEVER invent performance numbers. The project has not been built yet, so the resume
+   bullet describes what was built and why, and leaves measured figures to the candidate.
 
 Return JSON adhering to this exact schema:
 {
@@ -39,7 +41,7 @@ Return JSON adhering to this exact schema:
       "impact": "Measurable benefit"
     }
   ],
-  "resume_bullet_preview": "STAR-format bullet point with action verb, technologies used, and concrete simulated metric.",
+  "resume_bullet_preview": "STAR-format bullet point: action verb, what was built, technologies used. No invented metrics.",
   "interview_talking_points": [
     "Tradeoff or design decision 1 to discuss with interviewers",
     "Tradeoff or design decision 2 to discuss with interviewers"
@@ -133,7 +135,7 @@ def _format_roadmap(
         "resume_bullet_preview": str(
             data.get(
                 "resume_bullet_preview",
-                f"Architected and deployed high-throughput service leveraging {', '.join(target_skills[:3])}, reducing latency by 45%.",
+                f"Built and deployed a high-throughput service with {', '.join(target_skills[:3])}.",
             )
         ).strip(),
         "interview_talking_points": [
@@ -220,17 +222,21 @@ def _fallback_roadmap(
             {
                 "challenge": "Handling traffic spikes and message backpressure without dropping events.",
                 "solution": "Implemented decoupled asynchronous buffering with configurable consumer worker pools.",
-                "impact": "Zero message loss under 10x traffic bursts with bounded memory consumption.",
+                "impact": "Aims for no message loss under traffic bursts, with bounded memory.",
             },
             {
                 "challenge": "Cache stampede and thundering herd problem during concurrent invalidations.",
                 "solution": "Applied mutex-based distributed locking with probabilistic early cache recomputation.",
-                "impact": "Reduced database peak read load by 85% during cache refresh cycles.",
+                "impact": "Aims to keep database read load flat across cache refresh cycles.",
             },
         ],
+        # No numbers here on purpose: this project has not been built yet, and a
+        # bullet that arrives pre-loaded with invented throughput figures is one
+        # the candidate cannot defend in the interview it earns them.
         "resume_bullet_preview": (
-            f"Architected distributed event service utilizing {skills_joined}, processing 5,000+ msgs/sec "
-            f"with sub-15ms p99 latency and 99.9% pipeline uptime."
+            f"Built a distributed event-processing service with {skills_joined}, "
+            f"handling asynchronous ingestion, cached reads and containerised deployment "
+            f"(add your own measured throughput and latency once it runs)."
         ),
         "interview_talking_points": [
             f"Tradeoffs considered between push vs pull message delivery models when using {primary_skills[0] if primary_skills else 'queues'}.",

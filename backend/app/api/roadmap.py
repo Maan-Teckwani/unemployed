@@ -19,6 +19,8 @@ from app.schemas import (
 
 router = APIRouter(tags=["skills-and-roadmaps"])
 
+STATUSES = ("in_progress", "completed", "archived")
+
 
 @router.get("/skills/analytics", response_model=SkillAnalyticsOut)
 def get_skill_analytics(
@@ -71,7 +73,7 @@ def get_roadmap(roadmap_id: int, db: Session = Depends(get_db)) -> SkillRoadmap:
     """Get a single learning roadmap by ID."""
     roadmap = db.get(SkillRoadmap, roadmap_id)
     if roadmap is None:
-        raise HTTPException(status_code=404, detail="Roadmap not found")
+        raise HTTPException(status_code=404, detail="roadmap not found")
     return roadmap
 
 
@@ -82,9 +84,13 @@ def update_roadmap(
     """Update milestone tasks/deliverables or roadmap status."""
     roadmap = db.get(SkillRoadmap, roadmap_id)
     if roadmap is None:
-        raise HTTPException(status_code=404, detail="Roadmap not found")
+        raise HTTPException(status_code=404, detail="roadmap not found")
 
     if payload.status is not None:
+        if payload.status not in STATUSES:
+            raise HTTPException(
+                status_code=422, detail=f"status must be one of {STATUSES}"
+            )
         roadmap.status = payload.status
     if payload.milestones is not None:
         roadmap.milestones = payload.milestones
@@ -99,7 +105,18 @@ def complete_to_kb(roadmap_id: int, db: Session = Depends(get_db)) -> dict:
     """Convert a completed roadmap project into verified Knowledge Base chunks."""
     roadmap = db.get(SkillRoadmap, roadmap_id)
     if roadmap is None:
-        raise HTTPException(status_code=404, detail="Roadmap not found")
+        raise HTTPException(status_code=404, detail="roadmap not found")
+
+    # The Knowledge Base is the evidence a resume is built from, so only a
+    # project that was actually finished may enter it. Without this gate the
+    # blueprint alone — a plan, not a thing you did — ends up on a resume.
+    milestones = list(roadmap.milestones or [])
+    unfinished = [m for m in milestones if not (isinstance(m, dict) and m.get("completed"))]
+    if not milestones or unfinished:
+        raise HTTPException(
+            status_code=400,
+            detail="finish every milestone before adding this project to your Knowledge Base",
+        )
 
     roadmap.status = "completed"
 
@@ -119,7 +136,7 @@ def complete_to_kb(roadmap_id: int, db: Session = Depends(get_db)) -> dict:
         title=roadmap.title,
         context=f"Project Roadmap ({roadmap.role_family.title()})",
         company=None,
-        date_range="Recent",
+        date_range=None,
         accomplishment=bullet,
         technologies=technologies,
         skills=technologies,
@@ -142,6 +159,6 @@ def delete_roadmap(roadmap_id: int, db: Session = Depends(get_db)) -> None:
     """Delete a roadmap blueprint."""
     roadmap = db.get(SkillRoadmap, roadmap_id)
     if roadmap is None:
-        raise HTTPException(status_code=404, detail="Roadmap not found")
+        raise HTTPException(status_code=404, detail="roadmap not found")
     db.delete(roadmap)
     db.commit()

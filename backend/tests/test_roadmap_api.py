@@ -3,13 +3,14 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine, select
+from fastapi import HTTPException
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.api import roadmap as roadmap_api
 from app.db.models import KBChunk, SkillRoadmap
 from app.db.session import Base
-from app.schemas import RoadmapGenerateIn, RoadmapUpdateIn, SkillSimulateIn
+from app.schemas import RoadmapGenerateIn, RoadmapUpdateIn
 
 
 @pytest.fixture
@@ -20,14 +21,32 @@ def db():
         yield session
 
 
-def test_roadmap_crud_and_complete_to_kb(db):
-    # 1. Create a roadmap
+@pytest.fixture(autouse=True)
+def no_llm():
+    """Generation must not reach for Ollama here — the deterministic blueprint is
+    what these tests are about, and a live model makes them slow and flaky."""
+    with patch("app.ai.roadmap.generate_json", side_effect=RuntimeError("no llm")):
+        yield
+
+
+def _create(db, **kwargs) -> SkillRoadmap:
     payload = RoadmapGenerateIn(
-        target_skills=["Kafka", "Redis", "Docker"],
+        target_skills=kwargs.get("target_skills", ["Kafka", "Redis", "Docker"]),
         role_family="backend",
         estimated_weeks=3,
     )
-    created = roadmap_api.create_roadmap(payload, db=db)
+    return roadmap_api.create_roadmap(payload, db=db)
+
+
+def _finish_all(db, roadmap: SkillRoadmap) -> SkillRoadmap:
+    milestones = [{**m, "completed": True} for m in roadmap.milestones]
+    return roadmap_api.update_roadmap(
+        roadmap.id, RoadmapUpdateIn(milestones=milestones), db=db
+    )
+
+
+def test_roadmap_crud_and_complete_to_kb(db):
+    created = _create(db)
     assert created.id is not None
     assert created.status == "in_progress"
     assert "Kafka" in created.target_skills
@@ -35,39 +54,57 @@ def test_roadmap_crud_and_complete_to_kb(db):
 
     roadmap_id = created.id
 
-    # 2. List roadmaps
     all_roadmaps = roadmap_api.list_roadmaps(db=db)
     assert len(all_roadmaps) == 1
     assert all_roadmaps[0].id == roadmap_id
 
-    # 3. Get single roadmap
     single = roadmap_api.get_roadmap(roadmap_id, db=db)
     assert single.title == created.title
 
-    # 4. Update milestone status
-    updated_milestones = [dict(m) for m in single.milestones]
-    updated_milestones[0]["completed"] = True
-    update_payload = RoadmapUpdateIn(milestones=updated_milestones)
-    updated = roadmap_api.update_roadmap(roadmap_id, update_payload, db=db)
-    assert updated.milestones[0]["completed"] is True
+    updated = _finish_all(db, single)
+    assert all(m["completed"] for m in updated.milestones)
 
-    # 5. Complete to Knowledge Base
     vec = np.zeros(384, dtype=np.float32).tolist()
     with patch("app.api.roadmap.embed_passage", return_value=vec):
         res = roadmap_api.complete_to_kb(roadmap_id, db=db)
         assert res["status"] == "ok"
         assert "chunk_id" in res
 
-    # Verify chunk exists in DB
     chunk = db.get(KBChunk, res["chunk_id"])
     assert chunk is not None
     assert chunk.type == "project"
     assert "Kafka" in chunk.technologies
 
-    # Verify roadmap status marked completed
     final_roadmap = db.get(SkillRoadmap, roadmap_id)
     assert final_roadmap.status == "completed"
 
-    # 6. Delete roadmap
     roadmap_api.delete_roadmap(roadmap_id, db=db)
     assert db.get(SkillRoadmap, roadmap_id) is None
+
+
+def test_unfinished_roadmap_cannot_enter_the_kb(db):
+    """A blueprint is a plan, not an accomplishment: it may not become resume evidence."""
+    created = _create(db)
+
+    with pytest.raises(HTTPException) as err:
+        roadmap_api.complete_to_kb(created.id, db=db)
+    assert err.value.status_code == 400
+
+    assert db.get(SkillRoadmap, created.id).status == "in_progress"
+    assert db.query(KBChunk).count() == 0
+
+
+def test_unknown_status_is_rejected(db):
+    created = _create(db)
+    with pytest.raises(HTTPException) as err:
+        roadmap_api.update_roadmap(
+            created.id, RoadmapUpdateIn(status="done-ish"), db=db
+        )
+    assert err.value.status_code == 422
+
+
+def test_generated_bullet_carries_no_invented_metrics(db):
+    """The project has not been built yet, so its bullet may not claim measurements."""
+    created = _create(db)
+    assert "%" not in created.resume_bullet_preview
+    assert "msgs/sec" not in created.resume_bullet_preview
