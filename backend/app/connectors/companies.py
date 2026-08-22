@@ -17,7 +17,8 @@ SEED_COMPANIES: list[str] = [
     "Signzy", "HyperVerge", "Setu", "Decentro", "M2P Fintech", "Juspay", "Cashfree",
     "PayU", "BharatPe", "Pine Labs", "Mswipe", "Instamojo", "Zolve", "Smallcase",
     "Tickertape", "Sensibull", "Dhan", "Fyers", "INDmoney", "Scripbox", "Kuvera",
-    "ETMoney", "Khatabook", "OkCredit", "Refyne", "Jar", "Stable Money",
+    "ETMoney", "Khatabook", "OkCredit", "Refyne", "Jar", "Stable Money", "FamPay",
+    "HyperSwitch",
     # --- Banks / financial services / insurance ---
     "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak", "Yes Bank", "IDFC First Bank",
     "AU Small Finance Bank", "Bajaj Finserv", "PolicyBazaar", "Acko", "Digit Insurance",
@@ -49,10 +50,18 @@ SEED_COMPANIES: list[str] = [
     "FarEye", "Locus", "Shipsy", "Vymo", "Eightfold AI", "Uniphore", "Observe AI",
     "Skit AI", "Zolvit", "Kissflow", "Vtiger", "Wiz Freshers", "Cloudsek",
     "Seclore", "Lucideus", "Safe Security", "Sequretek", "Instasafe",
+    "Dyte", "InVideo", "Sprinto", "Atomicwork", "Kula",
     # --- AI / ML / data ---
     "Sarvam AI", "Krutrim", "Two AI", "CoRover", "Gnani AI", "Vernacular AI",
     "Mad Street Den", "Arya AI", "Tonbo Imaging", "Ati Motors", "Ola Krutrim",
     "Turing", "Scale AI", "Weights and Biases", "Hugging Face", "Anthropic",
+    "Perplexity", "Mistral AI", "Cohere", "Cursor", "Anysphere", "ElevenLabs",
+    "Runway", "Fireworks AI", "Groq", "Decagon", "Replicate", "Modal Labs",
+    "Baseten", "DeepL", "Poolside", "Phind",
+    # --- Quantitative trading / HFT / market makers ---
+    "Jane Street", "Citadel", "Citadel Securities", "Tower Research Capital",
+    "Hudson River Trading", "Jump Trading", "DE Shaw", "Optiver", "IMC Trading",
+    "Flow Traders", "WorldQuant", "Graviton Research Capital", "Quadeye", "NK Securities",
     # --- Gaming / entertainment / social ---
     "Dream11", "MPL", "Gameskraft", "Zupee", "WinZO", "Nazara", "Games24x7",
     "ShareChat", "Josh", "Moj", "Glance", "Inshorts", "DailyHunt", "Koo",
@@ -82,6 +91,9 @@ SEED_COMPANIES: list[str] = [
     "Replit", "Retool", "Airtable", "Miro", "Asana", "Monday", "ClickUp",
     "Loom", "Calendly", "Typeform", "Webflow", "Contentful", "Sanity",
     "Algolia", "Meilisearch", "Pinecone", "Weaviate", "LangChain", "Together AI",
+    "PostHog", "Clerk", "Resend", "Raycast", "Mintlify", "Dub", "Cal.com",
+    "Appsmith", "Hoppscotch", "SigNoz", "Qdrant", "Chroma", "Sourcegraph",
+    "Speakeasy",
     "Deel", "Remote", "Oyster HR", "Rippling", "Gusto", "Brex", "Ramp", "Mercury",
     "Plaid", "Modern Treasury", "Checkr", "Persona", "Alloy", "Unit21",
     "Coinbase", "Kraken", "Chainalysis", "Consensys", "Polygon", "CoinDCX",
