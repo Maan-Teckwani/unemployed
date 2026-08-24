@@ -12,5 +12,14 @@ rem run.ps1 still runs directly for anyone who prefers it.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
 
 rem Double clicking opens a window that would close the instant anything failed,
-rem taking the error with it. Hold it open so the message can be read.
-if errorlevel 1 pause
+rem taking the error with it. Hold it open so the message can be read, and name
+rem the transcript while doing it: on a first run the part that explains the
+rem failure has usually scrolled away, and "it didn't work" is all anyone can
+rem report back without a file to send.
+if errorlevel 1 (
+    echo.
+    echo   Setup stopped. The whole run was saved to setup-log.txt in this folder -
+    echo   send that file to whoever is helping you.
+    echo.
+    pause
+)

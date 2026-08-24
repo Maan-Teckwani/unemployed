@@ -61,6 +61,12 @@ one-click Knowledge Base ingestion.
 and [Ollama](https://ollama.com/download) itself if they are missing, using
 winget or Homebrew. On Linux it names what is missing and gives you the command.
 
+On Windows that means **one permission prompt**, covering the two of them that
+install for the whole computer — say yes to it. If the machine has no winget to
+install with, the script opens the download pages instead and tells you what to
+click on each. Either way the whole run is saved to `setup-log.txt` beside the
+script, which is the file to send to somebody if it goes wrong.
+
 **No database to install, and no Docker.** Everything is stored in one SQLite
 file at `data/jobsearch.db` — see [Why SQLite](#why-sqlite).
 
@@ -69,6 +75,12 @@ First, Git, which is what fetches the code. Safe to run if you already have it:
 **Windows** `winget install Git.Git -e` ·
 **macOS** `xcode-select --install` ·
 **Linux** `sudo apt install git -y`
+
+> **On Windows, without Git and without wanting it:** on the GitHub page click
+> **Code → Download ZIP**, right-click the file you get, **Extract All**, open
+> the folder, and skip to `run.cmd` below. The first time, Windows may put a
+> *"Windows protected your PC"* box in front of it because the file came from
+> the internet — **More info → Run anyway**.
 
 Then:
 

@@ -37,6 +37,10 @@ backend/generated/
 *.pdf
 !resources/**/*.pdf
 
+# What run.ps1 printed on the last run. Useful to send to somebody, never to
+# commit: it names paths on one particular machine.
+setup-log.txt
+
 # Machine-local Claude Code settings
 .claude/settings.local.json
 

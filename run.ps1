@@ -23,6 +23,27 @@ $Backend = Join-Path $Root "backend"
 $Web = Join-Path $Root "web"
 $Venv = Join-Path $Backend ".venv\Scripts\python.exe"
 
+# Everything this run prints, kept on disk.
+#
+# When setup fails on somebody else's laptop, the only thing they can send back
+# is what was on screen, and on a first run most of it has already scrolled
+# away. -Force overwrites the previous copy rather than growing forever; the
+# run worth reading is always the last one. PowerShell flushes and closes a
+# transcript when the process ends, including every `exit 1` below, so there is
+# no Stop-Transcript to forget.
+#
+# It holds every line this script prints, which is enough to say which step
+# stopped and why. It does not hold what pip, npm and ollama print: a native
+# program writes to the console directly and a transcript only sees a
+# pipeline. Routing them through one would take away their progress output,
+# and a ten minute PyTorch install with nothing moving on screen is the exact
+# thing that makes people close the window.
+#
+# Failing to open it must not stop the app - a folder this script cannot write
+# to is a real situation, and losing the log is not worth losing the run.
+$LogFile = Join-Path $Root "setup-log.txt"
+try { Start-Transcript -Path $LogFile -Force | Out-Null } catch { }
+
 function Say($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "    $msg" -ForegroundColor DarkGray }
 
@@ -53,61 +74,148 @@ function Update-Path {
     }
 }
 
-function Install-Winget($name, $id) {
+# The three things this app needs, and everything this script knows about
+# getting each one. A table rather than arguments threaded through a chain of
+# functions, because the download page turned out to matter as much as the
+# winget id the moment it became clear winget is not always there.
+#
+# Admin: Node ships a per-machine MSI and Python's installer writes the `py`
+# launcher into C:\Windows, so both need administrator rights. Ollama installs
+# into the current user's own folder and must NOT be elevated - installed as
+# an administrator it lands in the administrator's profile, along with every
+# model it later downloads, where the person who started this cannot see it.
+$Prereqs = [ordered]@{
+    node = @{
+        Name = "Node.js"; Id = "OpenJS.NodeJS.LTS"; Admin = $true
+        Url = "https://nodejs.org/en/download"
+        Hint = "Download the Windows Installer (.msi) and run it."
+    }
+    python = @{
+        Name = "Python"; Id = "Python.Python.3.12"; Admin = $true
+        Url = "https://www.python.org/downloads/windows/"
+        Hint = "Run the installer and tick 'Add python.exe to PATH' on the first screen."
+    }
+    ollama = @{
+        Name = "Ollama"; Id = "Ollama.Ollama"; Admin = $false
+        Url = "https://ollama.com/download/windows"
+        Hint = "Download OllamaSetup.exe and run it."
+    }
+}
+
+function Test-Admin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return ([Security.Principal.WindowsPrincipal]$identity).IsInRole(
+        [Security.Principal.WindowsBuiltinRole]::Administrator)
+}
+
+function Test-Winget {
     <#
-      Install one package and refresh the PATH. Says nothing about whether it
-      worked; every caller decides that by looking for the command afterwards.
+      Whether winget can install anything, which is a different question from
+      whether the name resolves.
 
-      winget is left to write straight to the console because this can be a
-      long download and a silent screen reads as a hang. $ErrorActionPreference
-      is relaxed around it for the reason described on Probe below: under
-      "Stop", anything a native command puts on stderr becomes a terminating
-      error, and winget is chatty on stderr even when it succeeds.
+      AppData\Local\Microsoft\WindowsApps holds a zero byte "app execution
+      alias" for winget that sits on the PATH whether or not App Installer is
+      actually there; running it opens the Microsoft Store instead of
+      installing. Windows 10 machines often have no winget at all. Either way
+      Get-Command says yes - the same trap the Store's python stub sets, which
+      is why Find-Python proves an interpreter runs instead of trusting a name.
+
+      Both cases used to end with this script printing a `winget install ...`
+      command that could not have worked either, which is the worst possible
+      answer for the person this script exists for.
     #>
-    if (-not (Have "winget")) { return }
+    if (-not (Have "winget")) { return $false }
+    return (Probe { winget --version }) -match '\d'
+}
 
-    Say "Installing $name"
-    Ok "Windows may ask for permission. Say yes."
+function Get-WingetArgs($id) {
+    # --silent keeps the vendor installer's own wizard out of the way. The two
+    # agreement flags stop winget stopping to ask a question nobody is watching
+    # for.
+    @("install", "--id", $id, "-e", "--source", "winget", "--silent",
+      "--accept-package-agreements", "--accept-source-agreements")
+}
 
+function Install-Here($key) {
+    <#
+      Install one package as the current user, in this window.
+
+      winget writes to the console as it goes, because this can be a long
+      download and a silent screen reads as a hang. Out-Host is what puts it in
+      the transcript as well: a native program writes to the console directly,
+      where Start-Transcript cannot see it, and only output routed through a
+      pipeline is recorded.
+
+      $ErrorActionPreference is relaxed around it for the reason described on
+      Probe below: under "Stop" anything a native command puts on stderr
+      becomes a terminating error, and winget is chatty on stderr even when it
+      succeeds.
+    #>
+    Ok "Installing $($Prereqs[$key].Name)..."
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    try {
-        # --silent keeps the vendor installer's own windows out of the way. The
-        # two agreement flags stop winget stopping to ask a question nobody is
-        # watching for.
-        $flags = @(
-            "install", "--id", $id, "-e", "--source", "winget", "--silent",
-            "--accept-package-agreements", "--accept-source-agreements"
-        )
-        & winget @flags
-    } finally {
-        $ErrorActionPreference = $previous
-    }
-
+    try { & winget @(Get-WingetArgs $Prereqs[$key].Id) | Out-Host }
+    finally { $ErrorActionPreference = $previous }
     Update-Path
 }
 
-function Ensure($cmd, $name, $id, $how) {
+function Install-Elevated($keys) {
     <#
-      Install $name if $cmd is missing, and say so plainly if that did not work.
+      Install the per-machine packages through a single permission prompt.
 
-      Success is "the command resolves now", never winget's exit code. winget
-      reports non-zero for perfectly good outcomes, the package already being
-      present among them, so its exit code answers a different question from
-      the one being asked here.
+      Elevating one child process instead of the whole script is the point.
+      Everything else here - the virtual environment, npm's cache, the model
+      Ollama downloads, the two windows at the end - belongs to the person
+      sitting in front of the machine, and running any of it as administrator
+      writes their app into an account they never sign into.
 
-      Every failure path ends exactly where this function used to begin: name
-      the tool, print the command to run by hand, stop. Installing things
-      automatically can leave someone better off than before, never worse.
+      One prompt for both packages rather than one each, because a permission
+      dialog that appears twice reads like something has gone wrong.
+
+      Owning the prompt also means being able to say what happened to it.
+      Left to ask for themselves, a silent MSI and a silent Python bundle
+      decline quietly when they cannot elevate, and all this script could see
+      afterwards was a tool that still was not installed. Cancelling
+      Start-Process -Verb RunAs throws, so refusal arrives as an event rather
+      than as an absence.
     #>
-    if (Have $cmd) { return }
+    $names = ($keys | ForEach-Object { $Prereqs[$_].Name }) -join " and "
+    $commands = ($keys | ForEach-Object {
+        "winget " + ((Get-WingetArgs $Prereqs[$_].Id) -join " ")
+    }) -join "; "
 
-    Install-Winget $name $id
-    if (Have $cmd) { Ok "$name installed"; return }
+    Ok "$names install for the whole computer, so Windows has to ask permission."
+    Ok "Choose Yes on the prompt. A second window does the work and closes itself."
+    try {
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $commands
+        )
+    } catch {
+        Ok "That permission prompt was refused, or this account cannot give it."
+    }
+    Update-Path
+}
 
-    Write-Host "`n$name is not installed, and installing it here did not work." -ForegroundColor Red
-    Write-Host "  $how"
-    Write-Host "  Then open a NEW terminal and run this script again."
+function Show-ManualSetup($keys, $reason) {
+    <#
+      Hand the job back, in a form somebody who does not write code can finish.
+
+      The download pages are opened rather than only printed, because typing an
+      address is a step that can go wrong and clicking a window already sitting
+      open is not. Every path out of this script that cannot install something
+      ends here, and none of them end on a command line any more.
+    #>
+    Write-Host "`n$reason" -ForegroundColor Red
+    Write-Host "  Install these yourself - it is a download and a Next-Next-Finish each:"
+    Write-Host ""
+    foreach ($key in $keys) {
+        Write-Host ("  - {0}   {1}" -f $Prereqs[$key].Name, $Prereqs[$key].Url)
+        Write-Host ("      {0}" -f $Prereqs[$key].Hint) -ForegroundColor DarkGray
+        Start-Process $Prereqs[$key].Url -ErrorAction SilentlyContinue
+    }
+    Write-Host ""
+    Write-Host "  Those pages are now open in your browser."
+    Write-Host "  Once they have all finished installing, run run.cmd again."
     exit 1
 }
 
@@ -157,47 +265,115 @@ function Save-ModelChoice($model) {
     Ok "Wrote OLLAMA_MODEL=$model to .env"
 }
 
+function Test-PythonExe($exe) {
+    # Runs, and is new enough. Both halves matter, and neither can be read off
+    # a filename.
+    return (Probe { & $exe -c "import sys; print(sys.version_info >= (3, 10))" }) -eq "True"
+}
+
 function Find-Python {
     <#
-      The name of an interpreter that actually runs and is new enough, or null.
+      An interpreter that actually runs and is new enough, or null.
 
       Bare `python` on Windows is frequently the Microsoft Store stub, which
       prints nothing and opens the Store instead of running, so this proves an
       interpreter works rather than trusting that the name resolves. The `py`
       launcher is tried first because it is the one that survives that.
 
-      Being a function rather than a block of script matters now: it is asked
+      The search of known folders is the same idea one step further. Python is
+      only added to the PATH when its installer is asked to, and somebody
+      clicking through that wizard by hand has no reason to know which box does
+      that. Without this, they install exactly what they were told to install
+      and this script still says Python is missing - which is the point where a
+      person stops believing anything it tells them. A full path works in every
+      place $Python is used.
+
+      Being a function rather than a block of script matters: it is asked
       twice, once before installing Python and once after, and the second call
       is the one that has to notice what the first call could not see.
     #>
     foreach ($candidate in @("py", "python", "python3")) {
         if (-not (Have $candidate)) { continue }
-        $version = Probe { & $candidate -c "import sys; print(sys.version_info >= (3, 10))" }
-        if ($version -eq "True") { return $candidate }
+        if (Test-PythonExe $candidate) { return $candidate }
+    }
+
+    $known = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python3*\python.exe"),
+        (Join-Path $env:ProgramFiles "Python3*\python.exe")
+    )
+    foreach ($pattern in $known) {
+        # Newest first, so a machine carrying an old 3.8 alongside a fresh 3.12
+        # does not get stopped by the one that fails the version test.
+        $found = Get-ChildItem $pattern -ErrorAction SilentlyContinue |
+                 Sort-Object Name -Descending
+        foreach ($exe in $found) {
+            if (Test-PythonExe $exe.FullName) { return $exe.FullName }
+        }
     }
     return $null
 }
 
 # --- 1. Prerequisites -------------------------------------------------------
 Say "Checking prerequisites"
-Ensure "node" "Node.js" "OpenJS.NodeJS.LTS" "winget install OpenJS.NodeJS.LTS -e"
-Ensure "ollama" "Ollama" "Ollama.Ollama" "winget install Ollama.Ollama -e"
 
-# Python is asked for by capability, not by name, so it cannot go through
-# Ensure: the Store stub means `python` can resolve while no interpreter
-# exists. Install when the search comes back empty, then search again.
+if (Test-Admin) {
+    # Not fatal, because somebody may have a reason. Said out loud, because
+    # "run it as administrator" is the first thing anyone suggests when a setup
+    # script fails, and here it is the one change that makes things worse:
+    # Ollama and its models would install into the administrator's profile and
+    # be missing from every ordinary run afterwards.
+    Write-Host "    This is running as Administrator, which it does not need to be." -ForegroundColor Yellow
+    Write-Host "    Ollama installs per user, so it would end up in the administrator's" -ForegroundColor Yellow
+    Write-Host "    account instead of yours. Closing this and double-clicking run.cmd" -ForegroundColor Yellow
+    Write-Host "    normally is the safer way round." -ForegroundColor Yellow
+}
+
+# Everything missing is found in one pass, then installed together.
+#
+# Checking and installing one tool at a time stopped at the first thing that
+# would not install, without ever mentioning the other two - so a laptop with
+# none of them learned about its three missing prerequisites across three runs,
+# each one ending in a red message.
+#
+# Python is asked for by capability rather than by name: the Store stub means
+# `python` can resolve on a machine with no interpreter on it.
 $Python = Find-Python
-if (-not $Python) {
-    Install-Winget "Python" "Python.Python.3.12"
+$missing = @()
+foreach ($key in $Prereqs.Keys) {
+    $present = if ($key -eq "python") { [bool]$Python } else { Have $key }
+    if (-not $present) { $missing += $key }
+}
+
+if ($missing.Count -gt 0) {
+    Say ("Installing what is missing: " +
+         (($missing | ForEach-Object { $Prereqs[$_].Name }) -join ", "))
+
+    if (-not (Test-Winget)) {
+        Show-ManualSetup $missing (
+            "This computer has no working copy of winget, which is what this script " +
+            "installs things with.")
+    }
+
+    # Per-user packages first and outside the elevation, for the reason on
+    # $Prereqs: elevating Ollama puts it in the wrong account.
+    foreach ($key in $missing) {
+        if (-not $Prereqs[$key].Admin) { Install-Here $key }
+    }
+    $elevated = @($missing | Where-Object { $Prereqs[$_].Admin })
+    if ($elevated.Count -gt 0) { Install-Elevated $elevated }
+
+    # Whether that worked is answered by looking for the tools again, never by
+    # winget's exit code: winget reports non-zero for perfectly good outcomes,
+    # the package already being present among them.
     $Python = Find-Python
+    $stillMissing = @($missing | Where-Object {
+        if ($_ -eq "python") { -not $Python } else { -not (Have $_) }
+    })
+    if ($stillMissing.Count -gt 0) {
+        Show-ManualSetup $stillMissing "Some of that did not install."
+    }
 }
-if (-not $Python) {
-    Write-Host "`nNo working Python 3.10 or newer was found, and installing one here did not work." -ForegroundColor Red
-    Write-Host "  winget install Python.Python.3.12 -e"
-    Write-Host "  Then open a NEW terminal and run this script again."
-    exit 1
-}
-Ok "node, ollama and $Python all present"
+Ok "Node.js, Ollama and Python ($Python) are all present"
 
 # --- 2. Model ---------------------------------------------------------------
 Say "Checking the language model"
