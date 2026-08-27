@@ -76,3 +76,46 @@ create unique index if not exists signups_client_id_key
 -- One row per Google account, for the same reason and in the same shape.
 create unique index if not exists signups_google_sub_key
   on signups (google_sub) where google_sub is not null;
+
+-- Coffees. Someone liked this enough to cover a bit of the hosting bill.
+--
+-- Every row is a payment Razorpay confirmed, never one the browser claimed
+-- happened: the insert runs after a signature check on the server, and the
+-- webhook writes the same row if the browser closed before it could.
+--
+-- `signup_id` is what earns the ring on the wall, and it is nullable because
+-- paying does not require signing in. Someone who paid signed out carries a
+-- claim token in their own browser and can attach the coffee to their row
+-- after they join.
+create table if not exists coffees (
+  id                  bigint generated always as identity primary key,
+  signup_id           bigint references signups (id) on delete set null,
+  -- What the card was charged, in paise. Always INR: the page is priced in the
+  -- reader's own currency and settled in rupees. See lib/currency.ts.
+  amount_paise        int         not null check (amount_paise > 0),
+  -- What the page showed them, so a question about a payment can be answered
+  -- in the numbers they actually saw rather than in the ones we charged.
+  display_currency    char(3)     not null,
+  display_amount      numeric(12, 2) not null,
+  razorpay_order_id   text        not null,
+  razorpay_payment_id text        not null,
+  -- Handed to the browser once, on success, and kept in its localStorage. It
+  -- is the only way back to an unclaimed row, and it is cleared the moment it
+  -- is used.
+  claim_token         text,
+  created_at          timestamptz not null default now()
+);
+
+-- The webhook and the browser both try to write the same payment, and whichever
+-- arrives second must not create a duplicate. This is what makes the insert
+-- idempotent rather than a race.
+create unique index if not exists coffees_payment_id_key
+  on coffees (razorpay_payment_id);
+
+-- The supporter lookup that every wall render runs.
+create index if not exists coffees_signup_id_idx
+  on coffees (signup_id) where signup_id is not null;
+
+-- Claiming, which is a lookup by token on a row that has no owner yet.
+create unique index if not exists coffees_claim_token_key
+  on coffees (claim_token) where claim_token is not null;

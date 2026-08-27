@@ -99,7 +99,7 @@ export function HeroBoard({ page, me }: { page: CrowdPage; me: SignupRow | null 
       <div className={`hero-board__grid${looping ? " hero-board__grid--looping" : ""}`}>
         {shown.map((person, i) => {
           const isMe = me !== null && person.id === me.id;
-          const highlight = highlightFor(person.id);
+          const highlight = highlightFor(person.id, page.supporters);
           return (
             <span
               key={

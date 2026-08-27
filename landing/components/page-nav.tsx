@@ -53,7 +53,12 @@ export function PageNav({ signedIn = false }: { signedIn?: boolean }) {
           : "border-b border-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-6">
+      {/* Tighter below sm than it used to be, and that is what pays for the
+          contribute tag. The bar was carrying a wordmark, a theme button, a
+          call to action and a menu button with about thirteen pixels to spare
+          at 375, so adding anything at all pushed the menu button off the right
+          edge, and the menu is the only way to the links on a phone. */}
+      <nav className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:gap-6 sm:px-6">
         {/* Home, not "#top". The nav is on /wall and /experiences too, where an
             anchor just scrolls the page you are already on and leaves you with
             no way back to the landing page. */}
@@ -85,7 +90,30 @@ export function PageNav({ signedIn = false }: { signedIn?: boolean }) {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:gap-3">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2 lg:ml-0 lg:gap-3">
+          {/* A tag rather than a sixth label, and a tag rather than a bare cup.
+              The row of links already does not fit a tablet, which is why it
+              collapses at lg, so this cannot go in it. But an unlabelled icon
+              beside another unlabelled icon is furniture, and this is the one
+              link on the page that has to be noticed, so it carries the word
+              and the one colour that is not on the rest of the bar.
+
+              The word is dropped on the narrowest screens and nowhere else.
+              At 375 pixels the bar is already carrying a wordmark, a theme
+              button, the main call to action and a menu button, and the first
+              thing an overflow costs is the call to action. The collapsed menu
+              spells it out in full. */}
+          <Link
+            href="/coffee"
+            aria-label={copy.nav.coffee.aria}
+            title={copy.nav.coffee.label}
+            aria-current={pathname === "/coffee" ? "page" : undefined}
+            className="nav-coffee"
+          >
+            <CupIcon />
+            <span className="hidden sm:inline">{copy.nav.coffee.tag}</span>
+          </Link>
+
           <ThemeToggle />
 
           <Link
@@ -113,7 +141,7 @@ export function PageNav({ signedIn = false }: { signedIn?: boolean }) {
           every one of them sitting off screen. */}
       {menuOpen && (
         <div id="nav-menu" className="border-t lg:hidden">
-          <ul className="mx-auto flex w-full max-w-5xl flex-col px-6 py-2">
+          <ul className="mx-auto flex w-full max-w-5xl flex-col px-4 py-2 sm:px-6">
             {copy.nav.links.map((link) => (
               <li key={link.href}>
                 <a
@@ -125,10 +153,44 @@ export function PageNav({ signedIn = false }: { signedIn?: boolean }) {
                 </a>
               </li>
             ))}
+            {/* The cup is a picture in the bar above and a sentence in here.
+                An icon with no label is fine beside a theme toggle and is not
+                fine as the only entry in a list of words. */}
+            <li>
+              <Link
+                href="/coffee"
+                onClick={() => setMenuOpen(false)}
+                className="hover:text-foreground text-muted-foreground block rounded-sm py-2.5 text-sm transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                {copy.nav.coffee.label}
+              </Link>
+            </li>
           </ul>
         </div>
       )}
     </header>
+  );
+}
+
+/* A mug, at sixteen pixels. Everything that makes the one at /coffee a mug is
+   gone at this size, so this is the two lines that survive: a tapered cup with
+   a handle, and one curl of steam so it reads as full rather than as a bucket. */
+function CupIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+    >
+      <path d="M4 9h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4Z" />
+      <path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16" />
+      <path d="M9 2c-1 1.4.9 2 0 3.5M13 2c-1 1.4.9 2 0 3.5" />
+    </svg>
   );
 }
 

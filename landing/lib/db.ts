@@ -108,10 +108,19 @@ export type CrowdPage = {
   /** Passed back as `?cursor=` for the next page. Null when there is no next page. */
   cursor: string | null;
   /**
-   * The maker and the contributors, shipped with the first page so they are on
-   * screen the moment the wall is, for everybody, whatever the wall's size.
+   * The maker, the contributors and the people who bought a coffee, shipped
+   * with the first page so they are on screen the moment the wall is, for
+   * everybody, whatever the wall's size.
    */
   pinned: SignupRow[];
+  /**
+   * Who has bought a coffee, as ids rather than rows.
+   *
+   * The rows are already in `pinned` and in the wall itself, so sending them
+   * twice would only make the page heavier. What the browser needs from this is
+   * the answer to one question per face: does this person get a ring.
+   */
+  supporters: readonly string[];
 };
 
 /** How many faces the server sends before the browser has to ask for more. */
@@ -127,26 +136,36 @@ export const CROWD_PAGE = 200;
  */
 export async function crowdPage(): Promise<CrowdPage> {
   try {
-    // The pinned lookup catches its own failure. It is a decoration on a wall
-    // that reads perfectly well without it, so it must never be the reason
-    // nobody gets any faces at all.
-    const [people, total, pinned] = await Promise.all([
+    const [people, total, supporters] = await Promise.all([
       recentSignups(CROWD_PAGE),
       countSignups(),
-      signupsByIds(PINNED_IDS).catch((error) => {
-        console.error("pinned people unavailable", error);
-        return [] as SignupRow[];
+      // Decoration on a wall that reads perfectly well without it, so a failure
+      // here is an unmarked wall rather than no wall at all.
+      supporterIds().catch((error) => {
+        console.error("supporters unavailable", error);
+        return [] as string[];
       }),
     ]);
+
+    // Deduped before the lookup, because someone can be both a contributor and
+    // someone who bought a coffee, and asking for their id twice would place
+    // them twice in the order that comes back.
+    const front = [...new Set([...PINNED_IDS, ...supporters.slice(0, SUPPORTER_PINS)])];
+    const pinned = await signupsByIds(front).catch((error) => {
+      console.error("pinned people unavailable", error);
+      return [] as SignupRow[];
+    });
+
     return {
       people,
       total,
       cursor: people.length === CROWD_PAGE ? (people[people.length - 1]?.id ?? null) : null,
       pinned,
+      supporters,
     };
   } catch (error) {
     console.error("wall unavailable", error);
-    return { people: [], total: 0, cursor: null, pinned: [] };
+    return { people: [], total: 0, cursor: null, pinned: [], supporters: [] };
   }
 }
 
@@ -311,3 +330,38 @@ export async function deleteExperience(id: string, signupId: string): Promise<bo
   return rows.length > 0;
 }
 
+/**
+ * How many of the people who bought a coffee are pinned to the front.
+ *
+ * The maker and the contributors are a handful and always will be. This list
+ * is not: it grows every time somebody presses the button, and pinning all of
+ * it would eventually mean the front of the wall is nothing but supporters and
+ * the wall proper starts three screens down.
+ *
+ * So the most recent few are pinned and the rest keep their ring where they
+ * already sit. Everybody who paid is marked; the front is a window on who did
+ * it lately.
+ */
+const SUPPORTER_PINS = 24;
+
+/**
+ * Everyone with a coffee against their name, most recent first.
+ *
+ * Ids only. The wall needs to know who to draw a ring around, and it already
+ * has the rows.
+ *
+ * Deliberately the last query in this file. The test that stops an address
+ * reaching a page scans every `select` here up to the next `from signups`, and
+ * a select against a different table placed above them would swallow one.
+ */
+export async function supporterIds(): Promise<string[]> {
+  const sql = db();
+  const rows = (await sql`
+    select signup_id, max(created_at) as latest
+    from coffees
+    where signup_id is not null
+    group by signup_id
+    order by latest desc
+  `) as { signup_id: string }[];
+  return rows.map((row) => String(row.signup_id));
+}

@@ -93,7 +93,7 @@ export function Wall({ page, me }: { page: CrowdPage; me: SignupRow | null }) {
                 >
                   {people.map((person) => {
                     const isMe = me !== null && person.id === me.id;
-                    const highlight = highlightFor(person.id);
+                    const highlight = highlightFor(person.id, page.supporters);
                     return (
                       <li key={person.id}>
                         <button
@@ -111,10 +111,8 @@ export function Wall({ page, me }: { page: CrowdPage; me: SignupRow | null }) {
                                 is the more useful of the two, and you already
                                 know which of these you are. */}
                             {!isMe && highlight && (
-                              <span className="wall-tile__role">
-                                {highlight === "maker"
-                                  ? copy.wall.maker
-                                  : copy.wall.contributor}
+                              <span className="wall-tile__role" data-role={highlight}>
+                                {copy.wall.roles[highlight]}
                               </span>
                             )}
                           </span>

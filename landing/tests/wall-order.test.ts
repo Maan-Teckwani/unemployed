@@ -86,12 +86,35 @@ test("an empty pinned list leaves the wall exactly as it was", () => {
   );
 });
 
-test("highlightFor names the two tiers and nobody else", () => {
+test("highlightFor names the three tiers and nobody else", () => {
   assert.equal(highlightFor(MAKER_ID), "maker");
   assert.equal(highlightFor(CONTRIBUTOR_IDS[0]), "contributor");
   assert.equal(highlightFor("900"), null);
   // Ids arrive from the driver as strings, but a number must not silently miss.
   assert.equal(highlightFor(Number(MAKER_ID)), "maker");
+});
+
+test("buying a coffee earns the third ring", () => {
+  assert.equal(highlightFor("900", ["900"]), "supporter");
+  assert.equal(highlightFor("901", ["900"]), null);
+  // The list comes from a database, where ids are strings, and is compared
+  // against an id that may arrive as a number from anywhere else.
+  assert.equal(highlightFor(900, ["900"]), "supporter");
+});
+
+test("the strongest claim wins, because a face wears one ring", () => {
+  // Somebody can write code for this and also buy a coffee for it. The wall has
+  // one mark per face, so the tiers are ranked rather than combined, and the
+  // more interesting of the two true things is the one it says.
+  assert.equal(highlightFor(MAKER_ID, [MAKER_ID]), "maker");
+  assert.equal(highlightFor(CONTRIBUTOR_IDS[0], [CONTRIBUTOR_IDS[0]]), "contributor");
+});
+
+test("no supporters is the same wall it was before coffees existed", () => {
+  // The argument is optional on purpose: an unreachable coffees table has to
+  // degrade to an unmarked wall rather than to no wall.
+  assert.equal(highlightFor(MAKER_ID, []), "maker");
+  assert.equal(highlightFor("900", []), null);
 });
 
 test("the maker leads the pinned list", () => {

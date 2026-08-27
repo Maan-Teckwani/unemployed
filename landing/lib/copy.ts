@@ -28,6 +28,12 @@ export const copy = {
       join: "Join the wall",
       joinDescription:
         "Pick a name and a face, and the setup steps open up. No password, and your email is never shown on the wall.",
+      coffee: "Buy me a coffee",
+      coffeeDescription:
+        "The tool is free and runs on your own laptop. The site, the wall and the database behind them are not free, and a coffee covers a bit of that bill.",
+      legal: "Terms, refunds and privacy",
+      legalDescription:
+        "What you are paying for when you buy a coffee, how to get it back, and what this site keeps about you.",
     },
   },
 
@@ -42,6 +48,20 @@ export const copy = {
       { href: "/experiences", label: "Placement snippets" },
     ],
     cta: "Join the wall",
+    // Its own tag beside the theme toggle rather than a sixth link. The row of
+    // links already does not fit a tablet, which is why it collapses at lg
+    // rather than at sm, and adding one more label to it would push that
+    // breakpoint up again.
+    //
+    // It carries a word rather than being a bare cup. A grey icon sitting next
+    // to another grey icon reads as page furniture and gets looked past, which
+    // is the one outcome this particular link cannot afford. The short word is
+    // on the tag and the full sentence is what a screen reader is given.
+    coffee: {
+      tag: "Contribute",
+      label: "Buy me a coffee",
+      aria: "Buy me a coffee",
+    },
     theme: {
       toDark: "Switch to dark theme",
       toLight: "Switch to light theme",
@@ -501,8 +521,12 @@ export const copy = {
     dragHint: "Drag the wall to move around it. More people load as you go.",
     you: "You",
     youAria: "You, pinned to the front of the wall",
-    maker: "Maker",
-    contributor: "Contributor",
+    // Keyed by the ring so the pill and the ring cannot say different things.
+    roles: {
+      maker: "Maker",
+      contributor: "Contributor",
+      supporter: "Coffee",
+    },
     loadingMore: "Loading more people.",
     personAria: (name: string) => `Placement snippets from ${name}`,
     personLoading: "Looking that up.",
@@ -575,10 +599,138 @@ export const copy = {
     },
   },
 
+  coffee: {
+    label: "Support",
+    heading: "Buy me a coffee.",
+    tagline: "The tool is free. The server bill is not.",
+    body: "unemployed runs on your own laptop, which is the whole point of it, and that part costs me nothing to give away. Everything around it does cost something: this site, the wall, the database holding it up, the domain it sits on. That bill arrives whether or not anyone buys me a coffee, and at the moment I am paying it out of a student account while looking for a job.",
+    kicker: "There is nothing behind this button. No tier, no perk you cannot already have, no part of the tool that unlocks. It is a coffee.",
+
+    where: {
+      heading: "Where it goes",
+      items: [
+        {
+          title: "Hosting and the database",
+          body: "The site and the wall run on Vercel, and the names on it live in a Neon database. Both are free until enough people turn up, and enough people have turned up.",
+        },
+        {
+          title: "The domain",
+          body: "Renewed once a year, in advance, whether or not anybody visits.",
+        },
+        {
+          title: "Nothing else",
+          body: "No ads to buy, no team to pay, no model to rent. The model runs on your machine, which is the reason the tool itself costs nothing to run.",
+        },
+      ],
+    },
+
+    amount: {
+      label: "How big a coffee",
+      slider: "Coffee size",
+      // What the fill is worth, in the only unit that matters here. Picked by
+      // thirds of the ladder, so the sentence changes as the cup fills.
+      covers: [
+        "Enough to keep this online for a day or so.",
+        "Enough for about a week of it.",
+        "Enough for a month of it, and the domain.",
+      ],
+      // Shown to everyone outside India, under the amount they picked.
+      charged: (rupees: string) =>
+        `Your card is charged ${rupees}. Razorpay settles into an Indian account, so rupees is the currency that goes through cleanly. The rate is approximate, and your bank may add a small fee of its own.`,
+      cta: (amount: string) => `Buy the coffee, ${amount}`,
+      working: "Opening the payment window",
+      confirming: "Confirming the payment",
+    },
+
+    ring: {
+      signedIn: "You are on the wall, so this also puts a ring on your face and pins you to the front of it.",
+      signedOut: "Bought signed out, this is simply a coffee. Join the wall first and it also marks your face on it, beside the people who wrote code for this.",
+      joinCta: "Join the wall first",
+    },
+
+    thanks: {
+      heading: "Thank you. Genuinely.",
+      body: "The cup is empty because you just drank it. That is a real bill covered by a real person, which is not a sentence I expected to write.",
+      marked: "Your face on the wall has a ring on it now. Go and look.",
+      claimable: "There was nobody signed in to mark. Join the wall and the coffee you just bought attaches itself to your face.",
+      wallCta: "See the wall",
+      joinCta: "Join the wall",
+      claiming: "Attaching your coffee",
+      claimed: "Attached. Your face has a ring on it now.",
+    },
+
+    errors: {
+      // Keys missing and a payment failing are different failures, and both are
+      // mine, so both get an honest sentence rather than "something went wrong".
+      unavailable: "Payments are not switched on for this site yet. Nothing was charged.",
+      dismissed: "Payment window closed. Nothing was charged.",
+      failed: "The payment did not go through. Nothing was charged.",
+      // The one failure where money did move, so it must never read like the
+      // others. Anyone seeing this has paid, and must not pay again.
+      unconfirmed: "Your payment went through, but recording it here did not. There is nothing wrong with the payment and you should not pay again. Email me and I will fix the wall.",
+      generic: "That did not go through. Try again in a moment.",
+    },
+  },
+
+  legal: {
+    heading: "Terms, refunds and privacy",
+    updated: "Last updated 27 August 2026",
+    sections: [
+      {
+        title: "What this is",
+        body: [
+          "unemployed is a free, open source job hunting tool that runs on your own computer. There is no account to buy, no subscription and no paid tier. Nothing on this site is sold.",
+          "The coffee button is a voluntary contribution towards what it costs to keep this website and the wall online. It buys nothing, unlocks nothing, and is not a purchase of goods or services.",
+        ],
+      },
+      {
+        title: "Payments",
+        body: [
+          "Payments are handled by Razorpay. Card details are entered into Razorpay's own window and are never seen by, sent to, or stored on this site.",
+          "Contributions are charged in Indian rupees. Outside India the page shows a rounded amount in your own currency as a guide, at an approximate rate, and states the rupee figure that will actually be charged before you pay. Your bank may add its own currency conversion fee, which this site has no part in and no sight of.",
+        ],
+      },
+      {
+        title: "Refunds and cancellation",
+        body: [
+          "There is nothing to deliver, so there is nothing to cancel.",
+          "If you paid by accident, paid more than you meant to, or simply changed your mind, email me within seven days and I will refund it in full without asking why. Refunds go back to the card or account they came from and usually take five to seven working days to appear, which is Razorpay and your bank rather than me.",
+        ],
+      },
+      {
+        title: "What this site stores",
+        body: [
+          "If you join the wall: the name you chose, your country, the avatar seed behind your face, and the email address on the Google account you signed in with. The address is never shown on the wall and never sent anywhere. Your resume, your job list and everything the tool knows about your career stay on your own machine and are never uploaded.",
+          "If you buy a coffee: the amount, the currency you were shown, and Razorpay's own payment reference. If you were signed in, it is linked to your row on the wall so your face can be marked. No card number reaches this site.",
+          "IP addresses are not stored. A salted hash of one is kept so that a single person cannot flood the wall, and a hash cannot be turned back into an address.",
+        ],
+      },
+      {
+        title: "Deleting your data",
+        body: [
+          "Email me and I will remove your row from the wall and anything attached to it. There is no form for this because there are not yet enough of you for a form to be the faster option.",
+        ],
+      },
+      {
+        title: "Contact",
+        body: [
+          "Maan Teckwani, sole proprietor, operating from India.",
+          "For refunds, deletions, or anything else about this site, email me and I will reply.",
+        ],
+      },
+    ],
+    // Written once, here, because it appears in three of the sections above and
+    // because Razorpay's review of a website checks that a contact is reachable.
+    email: "maanteckwani@gmail.com",
+    backCta: "Back to the site",
+  },
+
   footer: {
     built: "Built by a student who was job hunting and got tired of doing it by hand.",
     repo: "Source on GitHub",
     licence: "MIT licensed",
     avatars: "Avatars by DiceBear, Open Peeps, CC0",
+    coffee: "Buy me a coffee",
+    legal: "Terms, refunds and privacy",
   },
 } as const;

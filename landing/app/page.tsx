@@ -295,6 +295,14 @@ function Footer() {
     <footer className="border-t">
       <div className="text-muted-foreground mx-auto w-full max-w-5xl px-6 md:px-12 lg:px-24 py-10 text-sm">
         <p>{copy.footer.built}</p>
+        <p className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+          <Link href="/coffee" className="hover:text-foreground underline underline-offset-4">
+            {copy.footer.coffee}
+          </Link>
+          <Link href="/legal" className="hover:text-foreground underline underline-offset-4">
+            {copy.footer.legal}
+          </Link>
+        </p>
         <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
           <span>{copy.footer.avatars}</span>
         </p>

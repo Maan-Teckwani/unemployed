@@ -26,11 +26,26 @@ export const CONTRIBUTOR_IDS: readonly string[] = ["2676"];
  */
 export const PINNED_IDS: readonly string[] = [MAKER_ID, ...CONTRIBUTOR_IDS];
 
-export type Highlight = "maker" | "contributor";
+export type Highlight = "maker" | "contributor" | "supporter";
 
-/** What ring this person gets, or null for everyone else. */
-export function highlightFor(id: string | number): Highlight | null {
+/**
+ * What ring this person gets, or null for everyone else.
+ *
+ * Three tiers now, and only two of them are in this file. Buying a coffee earns
+ * the third, and that list cannot live in code the way the other two do: it
+ * changes when somebody presses a button, not when somebody sends a pull
+ * request, so it comes from the database and is passed in.
+ *
+ * Ranked rather than combined. Someone can be all three at once and a face can
+ * only wear one ring, so the strongest claim wins and the pill under it says
+ * the most interesting true thing about them.
+ */
+export function highlightFor(
+  id: string | number,
+  supporters: readonly string[] = [],
+): Highlight | null {
   const key = String(id);
   if (key === MAKER_ID) return "maker";
-  return CONTRIBUTOR_IDS.includes(key) ? "contributor" : null;
+  if (CONTRIBUTOR_IDS.includes(key)) return "contributor";
+  return supporters.includes(key) ? "supporter" : null;
 }

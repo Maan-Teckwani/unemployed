@@ -29,4 +29,12 @@ function resolve(): string {
 export const SITE_URL = resolve();
 
 /** Every route worth pointing a crawler at. Gated and error pages are not. */
-export const PUBLIC_ROUTES = ["/", "/guide", "/wall", "/experiences", "/join"] as const;
+export const PUBLIC_ROUTES = [
+  "/",
+  "/guide",
+  "/wall",
+  "/experiences",
+  "/join",
+  "/coffee",
+  "/legal",
+] as const;

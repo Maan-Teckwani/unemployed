@@ -93,12 +93,27 @@
      it survives both grounds without glowing at anyone. */
   --contributor: oklch(0.7 0.15 68);
   --contributor-ink: oklch(0.22 0.03 68);
+
+  /* Coffee, and the only other colour on this site.
+     It is allowed in for one reason: it is on one page, inside one drawing, and
+     coffee that is not brown is not coffee. It is deliberately not reused for
+     anything, so it stays a picture of a drink rather than becoming a second
+     accent that the rings on the wall would then have to compete with. */
+  --coffee: oklch(0.4 0.075 55);
+  --coffee-crema: oklch(0.6 0.085 66);
+  --coffee-steam: oklch(0.6 0.02 60);
 }
 
 .dark {
   color-scheme: dark;
   --contributor: oklch(0.79 0.15 72);
   --contributor-ink: oklch(0.2 0.03 68);
+  /* Lifted rather than recoloured. The same brown on a dark ground reads as a
+     hole in the page, and the crema has to stay clearly lighter than the body
+     or the surface band disappears. */
+  --coffee: oklch(0.47 0.085 55);
+  --coffee-crema: oklch(0.67 0.09 66);
+  --coffee-steam: oklch(0.7 0.02 60);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -750,4 +765,256 @@ textarea.input {
   .scroll-hint {
     animation: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Someone bought a coffee.
+   A third ring, below the two in lib/contributors.ts, and drawn as less of the
+   same thing rather than as something new: the border without the glow. Writing
+   code for this and buying a coffee for it are not the same act, and the wall
+   should not claim they are, but they are both the same kind of act and a
+   second colour would say they were unrelated.
+   --------------------------------------------------------------------------- */
+.hero-board__face[data-highlight="supporter"] img {
+  opacity: 0.78;
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--contributor) 70%, transparent);
+}
+
+.dark .hero-board__face[data-highlight="supporter"] img {
+  opacity: 0.72;
+}
+
+.wall-tile[data-highlight="supporter"] .wall-tile__face img {
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--contributor) 70%, transparent);
+}
+
+/* The pill under a supporter is outlined rather than filled, for the same
+   reason: three solid amber pills on one wall and the maker stops standing out
+   from the people who bought him a coffee. */
+.wall-tile__role[data-role="supporter"] {
+  background: var(--background);
+  color: color-mix(in oklab, var(--contributor) 75%, var(--foreground));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--contributor) 55%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   The contribute tag, in the nav.
+   Brown rather than amber. Amber on this site means a person did something and
+   is worn by faces on the wall; borrowing it for a link would make the two read
+   as the same system. Brown means coffee, it appears in exactly two places, and
+   the second one is the page this points at.
+   --------------------------------------------------------------------------- */
+.nav-coffee {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding-inline: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--coffee) 40%, transparent);
+  background: color-mix(in oklab, var(--coffee) 10%, transparent);
+  color: color-mix(in oklab, var(--coffee) 75%, var(--foreground));
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* Icon only, on a phone. Square rather than a pill with nothing in it. */
+@media (max-width: 639px) {
+  .nav-coffee {
+    width: 2rem;
+    padding-inline: 0;
+    justify-content: center;
+  }
+}
+
+.nav-coffee:hover {
+  border-color: color-mix(in oklab, var(--coffee) 70%, transparent);
+  background: color-mix(in oklab, var(--coffee) 18%, transparent);
+}
+
+/* Already there. The tag stops advertising a page you are looking at. */
+.nav-coffee[aria-current="page"] {
+  border-color: color-mix(in oklab, var(--coffee) 70%, transparent);
+  background: color-mix(in oklab, var(--coffee) 18%, transparent);
+}
+
+.nav-coffee:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   The mug, at /coffee.
+   See components/coffee/coffee-cup.tsx for how the fill works. Everything in
+   here is either the ink the rest of the page is drawn in, or the one brown.
+   --------------------------------------------------------------------------- */
+.coffee-cup {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.coffee-cup__ceramic {
+  fill: var(--background);
+}
+
+.coffee-cup__wall,
+.coffee-cup__rim,
+.coffee-cup__handle {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The back half of the rim sits behind the coffee in a full cup, so it is drawn
+   lighter. At the brim you should see the lip of the mug through the surface,
+   not a hard line across it. */
+.coffee-cup__rim {
+  stroke-width: 2.4;
+  opacity: 0.55;
+}
+
+.coffee-cup__saucer {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 2.4;
+  opacity: 0.28;
+}
+
+/* The one number the slider moves. The easing is the page's own, so the level
+   settles the way every other moving thing here settles. */
+.coffee-cup__liquid {
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.coffee-cup__body {
+  fill: var(--coffee);
+  animation: coffee-wave 4.5s linear infinite;
+}
+
+.coffee-cup__crema {
+  fill: var(--coffee-crema);
+  /* Slower, and the other way, so the band along the surface widens and narrows
+     instead of sliding along in lockstep with the coffee under it. */
+  animation: coffee-wave-back 7s linear infinite;
+}
+
+/* One period of the wave. See WAVE in coffee-cup.tsx: anything other than 120
+   here and the surface visibly jumps once a cycle. */
+@keyframes coffee-wave {
+  to {
+    transform: translateX(-120px) translateY(7px);
+  }
+}
+
+@keyframes coffee-wave-back {
+  to {
+    transform: translateX(120px);
+  }
+}
+
+.coffee-cup__steam path {
+  stroke: var(--coffee-steam);
+  opacity: 0;
+  /* Steam grows upward off the surface, not out of its own middle. */
+  transform-origin: bottom center;
+}
+
+/* Steam only where there is something hot to rise off. The attribute is set by
+   the component from the same fill number the liquid uses, so an empty cup does
+   not sit there gently steaming at nobody. */
+.coffee-cup[data-steaming] .coffee-cup__steam path {
+  animation: coffee-steam 3.2s ease-in-out infinite;
+}
+
+@keyframes coffee-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scaleY(0.85);
+  }
+  35% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scaleY(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coffee-cup__liquid,
+  .coffee-cup__body,
+  .coffee-cup__crema,
+  .coffee-cup__steam path {
+    animation: none;
+    transition: none;
+  }
+  /* Without the animation the steam would sit at opacity 0, which is a cup that
+     looks cold rather than a cup that is not animated. */
+  .coffee-cup[data-steaming] .coffee-cup__steam path {
+    opacity: 0.4;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The amount slider.
+   Styled rather than left native because the native track is the one control on
+   this page that arrives in the browser's accent colour, which on most machines
+   is blue, and there is no blue anywhere else here.
+   --------------------------------------------------------------------------- */
+.coffee-slider {
+  width: 100%;
+  height: 1.5rem;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.coffee-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.coffee-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.coffee-slider::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -8px;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  border: 1px solid var(--foreground);
+  background: var(--coffee);
+}
+
+.coffee-slider::-moz-range-thumb {
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  border: 1px solid var(--foreground);
+  background: var(--coffee);
+}
+
+.coffee-slider:focus-visible {
+  outline: none;
+}
+
+.coffee-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.coffee-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
