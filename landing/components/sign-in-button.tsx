@@ -24,7 +24,7 @@ export function SignOutButton() {
     <button
       type="button"
       onClick={() => signOut({ redirectTo: "/" })}
-      className="text-muted-foreground hover:text-foreground rounded-sm text-xs underline underline-offset-4 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      className="text-red-600 hover:text-red-700 rounded-sm text-xs underline underline-offset-4 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       {copy.auth.signOut}
     </button>
