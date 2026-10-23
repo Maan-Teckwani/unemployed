@@ -28,7 +28,9 @@ export function CopyButton({ command }: { command: string }) {
       <button
         type="button"
         onClick={copyIt}
-        className="shrink-0 rounded-md border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className={`shrink-0 rounded-md border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50${
+          copied ? ' text-green-600 border-green-600' : ''
+        }`}
       >
         {copied ? "copied" : "copy"}
       </button>
