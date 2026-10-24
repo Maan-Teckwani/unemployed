@@ -171,13 +171,83 @@ say "Checking the language model"
 # ollama command would fail with a connection error. Start one ourselves if
 # nothing is listening; a desktop install that already runs is left alone.
 if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
-  ok "Starting the Ollama server..."
-  nohup ollama serve >/tmp/ollama-serve.log 2>&1 &
+  OLLAMA_LOG="/tmp/ollama-serve.log"
+  OLLAMA_PORT_DIAG="/tmp/ollama-port-11434.txt"
+
+  if [ "$(uname)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
+    # Desktop installs need the app running once before CLI commands can connect.
+    open -gj -a Ollama >/dev/null 2>&1 || true
+    # Give the desktop daemon a moment to come up before attempting cleanup/start.
+    for _ in 1 2 3 4 5; do
+      curl -sf http://localhost:11434/api/version >/dev/null 2>&1 && break
+      sleep 1
+    done
+  fi
+
+  if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
+    # Self-heal common stale local process issue before trying to start again.
+    if command -v lsof >/dev/null 2>&1; then
+      lsof -nP -iTCP:11434 -sTCP:LISTEN >"$OLLAMA_PORT_DIAG" 2>/dev/null || true
+    else
+      printf "%s\n" "lsof not found; unable to capture port diagnostic for 11434." >"$OLLAMA_PORT_DIAG"
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+      # Kill only listeners on 11434 to avoid stopping an Ollama server running on a custom port.
+      pids="$(lsof -nP -iTCP:11434 -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $2}' | sort -u)"
+      if [ -n "$pids" ]; then
+        kill $pids >/dev/null 2>&1 || true
+      fi
+    else
+      pkill -f 'ollama serve' >/dev/null 2>&1 || true
+    fi
+    ok "Starting the Ollama server..."
+    nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
+    OLLAMA_SERVE_PID=$!
+  fi
+
   waited=0
   until curl -sf http://localhost:11434/api/version >/dev/null 2>&1; do
     sleep 2; waited=$((waited + 2))
-    [ "$waited" -ge 60 ] && die "Ollama would not start. See /tmp/ollama-serve.log"
+    if [ -n "${OLLAMA_SERVE_PID:-}" ] && ! kill -0 "$OLLAMA_SERVE_PID" 2>/dev/null; then
+      break
+    fi
+    [ "$waited" -ge 60 ] && break
   done
+
+  if ! curl -sf http://localhost:11434/api/version >/dev/null 2>&1; then
+    LOG_TAIL="$(tail -n 50 "$OLLAMA_LOG" 2>/dev/null || true)"
+    BIND_ERR=0
+    if [ -f "$OLLAMA_LOG" ] && grep -qi "bind: operation not permitted" "$OLLAMA_LOG"; then
+      BIND_ERR=1
+    fi
+    if [ "$(uname)" = "Darwin" ]; then
+      if [ "$BIND_ERR" -eq 1 ]; then
+        die "Ollama could not bind to 127.0.0.1:11434 on macOS.
+  Auto-recovery already tried:
+    1) lsof -nP -iTCP:11434 -sTCP:LISTEN
+    2) pkill -f 'ollama serve' || true
+  Next, try:
+    3) brew services restart ollama
+    4) open -a Ollama
+    5) curl http://localhost:11434/api/version
+  Then run ./run.sh again.
+  Port diagnostic: $OLLAMA_PORT_DIAG
+  Debug log: $OLLAMA_LOG
+  Recent log lines:
+  $LOG_TAIL"
+      fi
+      die "Ollama did not come up on http://localhost:11434.
+  If you installed the desktop app, launch it once and leave it running.
+  If you installed with Homebrew, run: brew services start ollama
+  Debug log: $OLLAMA_LOG
+  Recent log lines:
+  $LOG_TAIL"
+    else
+      die "Ollama would not start. See $OLLAMA_LOG
+  Recent log lines:
+  $LOG_TAIL"
+    fi
+  fi
 fi
 
 RAM_GB="$(total_ram_gb)"
