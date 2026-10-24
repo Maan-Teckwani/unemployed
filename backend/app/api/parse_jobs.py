@@ -8,10 +8,13 @@ ceremony around nothing.
 The trade is explicit: restart the backend mid-parse and the job is gone, and
 the user uploads again.
 """
+import logging
 import threading
 import uuid
 
 from app.ai.parse import parse_to_chunks, segment
+
+log = logging.getLogger(__name__)
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -58,11 +61,13 @@ def _run(job_id: str, documents: list[tuple[str, str, str | None]]) -> None:
             try:
                 job["chunks"].extend(parse_to_chunks(text, kind, on_segment=advance))
             except Exception as e:  # noqa: BLE001 - one bad file must not sink the batch
+                log.exception("Parsing %s failed", filename)
                 job["errors"].append(f"{filename}: {e}")
 
         job["status"] = "done"
         job["message"] = f"Found {len(job['chunks'])} accomplishment(s)"
     except Exception as e:  # noqa: BLE001 - the UI needs the reason
+        log.exception("Parse job %s failed", job_id)
         job["status"] = "failed"
         job["message"] = str(e)[:500]
 
