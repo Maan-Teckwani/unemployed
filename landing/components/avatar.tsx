@@ -28,7 +28,7 @@ export function AvatarImage({
       width={size}
       height={size}
       loading={priority ? "eager" : "lazy"}
-      className="rounded-full border bg-background"
+      className="rounded-full border border-blue-500 bg-background"
     />
   );
 }
