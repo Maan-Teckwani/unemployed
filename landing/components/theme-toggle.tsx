@@ -54,6 +54,7 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-label={dark ? copy.nav.theme.toLight : copy.nav.theme.toDark}
+      title={dark ? copy.nav.theme.toLight : copy.nav.theme.toDark}
       className="text-muted-foreground hover:text-foreground grid size-8 shrink-0 place-items-center rounded-md transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       {dark === null ? null : dark ? <SunIcon /> : <MoonIcon />}
