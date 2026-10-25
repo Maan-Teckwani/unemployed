@@ -16,7 +16,7 @@ export function HeroCountLine({ total }: { total: number }) {
   if (count === 0) return null;
 
   return (
-    <p className="text-muted-foreground mt-8 font-mono text-xs tracking-wider">
+    <p className="text-amber-500 mt-8 font-mono text-xs tracking-wider">
       {copy.hero.counting(count)}
     </p>
   );
