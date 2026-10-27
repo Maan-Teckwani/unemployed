@@ -25,7 +25,7 @@ export default async function ProfilePage() {
             <h1 className="font-serif text-3xl leading-tight sm:text-4xl">Your Profile</h1>
             <SignOutButton />
           </div>
-          
+
           <div className="mt-8">
             <ProfileForm
               defaultName={me.signup.name}
