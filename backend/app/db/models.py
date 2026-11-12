@@ -47,6 +47,21 @@ class CandidateProfile(Base):
     college: Mapped[str] = mapped_column(String(200), default="")
 
 
+class ResumeProfile(Base):
+    """A role-specific view over the candidate's shared evidence."""
+
+    __tablename__ = "resume_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    target_roles: Mapped[list[str]] = mapped_column(StringList, default=list)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class KBChunk(Base):
     """One accomplishment + its context, plus its embedding vector."""
 
@@ -68,6 +83,10 @@ class KBChunk(Base):
     technologies: Mapped[list[str]] = mapped_column(StringList, default=list)
     skills: Mapped[list[str]] = mapped_column(StringList, default=list)
     impact: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Null means shared evidence available to every resume profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resume_profiles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     embedding: Mapped[list[float]] = mapped_column(Embedding(settings.embedding_dim))
 
@@ -105,6 +124,18 @@ class Preferences(Base):
     # than filtering, because a great role in the "wrong" city is still worth seeing.
     preferred_locations: Mapped[list[str]] = mapped_column(StringList, default=list)
     remote_ok: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class WorkflowSettings(Base):
+    """Personal pacing and reminder defaults for the application workflow."""
+
+    __tablename__ = "workflow_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    daily_application_goal: Mapped[int] = mapped_column(Integer, default=3)
+    follow_up_days: Mapped[int] = mapped_column(Integer, default=7)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    week_starts_monday: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Company(Base):
@@ -263,6 +294,9 @@ class Resume(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resume_profiles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     headline: Mapped[str] = mapped_column(String(300), default="")
     summary: Mapped[str] = mapped_column(Text, default="")
@@ -335,6 +369,71 @@ class Application(Base):
     applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resume_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True
+    )
+    application_url: Mapped[str] = mapped_column(String(1000), default="")
+    follow_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    assistant_state: Mapped[str] = mapped_column(
+        String(30), default="idle"
+    )  # idle | waiting_for_login | ready_for_review | submitted
+
+
+class ApplicationAnswer(Base):
+    """A user-approved answer that can be reused in application forms."""
+
+    __tablename__ = "application_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question: Mapped[str] = mapped_column(String(500))
+    answer: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(40), default="general")
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False)
+    explicit_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ApplicationAnswerUse(Base):
+    """Audit trail for answer usage, without storing form field values."""
+
+    __tablename__ = "application_answer_uses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    answer_id: Mapped[int] = mapped_column(
+        ForeignKey("application_answers.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ApplicationStatusEvent(Base):
+    """Immutable status history used for funnel analytics."""
+
+    __tablename__ = "application_status_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(30))
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
 
 class Contact(Base):
@@ -393,6 +492,44 @@ class ProjectIdea(Base):
     covers_gaps: Mapped[list[str]] = mapped_column(StringList, default=list)
     scope: Mapped[str] = mapped_column(String(120), default="")
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class InterviewPrep(Base):
+    """Grounded interview preparation for one job."""
+
+    __tablename__ = "interview_prep"
+
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resume_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    questions: Mapped[list] = mapped_column(JSONColumn, default=list)
+    talking_points: Mapped[list] = mapped_column(JSONColumn, default=list)
+    source_chunk_ids: Mapped[list[int]] = mapped_column(JSONColumn, default=list)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class CompanyIntel(Base):
+    """User-provided company facts; no web scraping or unverified claims."""
+
+    __tablename__ = "company_intel"
+    __table_args__ = (
+        Index("ix_company_intel_company", "company_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_name: Mapped[str] = mapped_column(String(200), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    content: Mapped[str] = mapped_column(Text)
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    source_type: Mapped[str] = mapped_column(String(30), default="user_note")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

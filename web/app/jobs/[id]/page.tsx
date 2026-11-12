@@ -5,9 +5,12 @@ import { use, useCallback, useEffect, useState, ViewTransition } from "react";
 import { toast } from "sonner";
 import {
   api,
+  type AssistantState,
   type JobDetail,
   type MatchDetail,
   type Resume,
+  type ResumeProfile,
+  type ResumeQuality,
   type Status,
 } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
@@ -25,6 +28,13 @@ import { Working } from "@/components/working";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -39,23 +49,36 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const [editing, setEditing] = useState(false);
   const [hasTemplate, setHasTemplate] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<ResumeProfile[]>([]);
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const [assistantState, setAssistantState] = useState<AssistantState | null>(null);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [quality, setQuality] = useState<ResumeQuality | null>(null);
   const { model } = useStack();
   const inPile = model.sheets.some((s) => s.jobId === jobId);
 
   const load = useCallback(async () => {
     try {
-      const [j, m, r, apps, templates] = await Promise.all([
+      const [j, m, r, apps, templates, profileRows] = await Promise.all([
         api.getJob(jobId),
         // A job may never have been scored (e.g. just added manually).
         api.matchDetail(jobId).catch(() => null),
         api.resumeForJob(jobId).catch(() => null),
         api.listApplications().catch(() => []),
         api.listTemplates().catch(() => []),
+        api.listResumeProfiles().catch(() => []),
       ]);
       setJob(j);
       setMatch(m);
       setResume(r);
       setHasTemplate(templates.some((t) => t.is_default));
+      setProfiles(profileRows);
+      setProfileId(
+        r?.profile_id ??
+          profileRows.find((p) => p.is_default)?.id ??
+          profileRows[0]?.id ??
+          null,
+      );
       setStatus(apps.find((a) => a.job_id === jobId)?.status ?? "todo");
     } catch (e) {
       // Only `getJob` can reach here — the other four swallow their own errors
@@ -76,7 +99,9 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
     setGenerating(true);
     try {
       // Your own template wins when you have one; otherwise the built-in PDF.
-      setResume(await api.generateResume(jobId, hasTemplate ? "latex" : "pdf"));
+      setResume(
+        await api.generateResume(jobId, hasTemplate ? "latex" : "pdf", profileId ?? undefined),
+      );
       // Generating is what makes a job "ready to send", so reflect that.
       setStatus("resume_ready");
       api.setStatus(jobId, "resume_ready").catch(() => {});
@@ -85,6 +110,64 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       toast.error(String(e));
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function startAssistant() {
+    setAssistantBusy(true);
+    try {
+      const state = await api.startApplicationAssistant(
+        jobId,
+        profileId ?? undefined,
+        resume?.id,
+      );
+      setAssistantState(state);
+      toast.success("Application opened in the local browser");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setAssistantBusy(false);
+    }
+  }
+
+  async function prepareAssistant() {
+    if (!assistantState) return;
+    setAssistantBusy(true);
+    try {
+      setAssistantState(
+        await api.prepareApplicationAssistant(assistantState.session_id),
+      );
+      toast.success("Safe fields filled — review the browser window");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setAssistantBusy(false);
+    }
+  }
+
+  async function submitAssistant() {
+    if (!assistantState) return;
+    if (!window.confirm("I reviewed the application and want to submit it now.")) return;
+    setAssistantBusy(true);
+    try {
+      setAssistantState(
+        await api.submitApplicationAssistant(assistantState.session_id),
+      );
+      setStatus("applied");
+      toast.success("Application submitted — follow-up reminder set for 7 days");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setAssistantBusy(false);
+    }
+  }
+
+  async function reviewQuality() {
+    if (!resume) return;
+    try {
+      setQuality(await api.resumeQuality(resume.id));
+    } catch (e) {
+      toast.error(String(e));
     }
   }
 
@@ -177,12 +260,39 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       {/* Sticky: on a long job page the resume pushes these off screen, and
           "Apply" and the status control are exactly what you reach for last. */}
       <div className="sticky top-0 z-10 -mx-2 flex flex-wrap items-center gap-3 border-b bg-background px-2 py-3">
+        {profiles.length > 0 && (
+          <Select
+            value={profileId === null ? "" : String(profileId)}
+            onValueChange={(value) => setProfileId(Number(value))}
+          >
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="Resume profile" />
+            </SelectTrigger>
+            <SelectContent>
+              {profiles.map((profile) => (
+                <SelectItem key={profile.id} value={String(profile.id)}>
+                  {profile.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button onClick={generate} disabled={generating}>
           {generating
             ? "Generating…"
             : hasTemplate
               ? "Generate resume in my LaTeX"
               : "Generate tailored resume"}
+        </Button>
+        <Link href={`/interview/${jobId}`} className={buttonVariants({ variant: "outline" })}>
+          Interview prep
+        </Link>
+        <Button
+          variant="outline"
+          onClick={startAssistant}
+          disabled={assistantBusy || !resume}
+        >
+          {assistantBusy ? "Opening…" : "Apply with assistant"}
         </Button>
         {resume && !resume.latex && (
           <Button
@@ -192,6 +302,11 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             }
           >
             Download PDF
+          </Button>
+        )}
+        {resume && !resume.latex && (
+          <Button variant="outline" onClick={reviewQuality}>
+            Quality review
           </Button>
         )}
         {resume && !resume.latex && (
@@ -217,6 +332,53 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
         )}
         <StatusSelect jobId={jobId} value={status} onChange={setStatus} />
       </div>
+
+      {assistantState && (
+        <div className="rounded-lg border p-4 space-y-3">
+          <h2 className="font-medium">Application assistant</h2>
+          <p className="text-sm text-muted-foreground">{assistantState.message}</p>
+          <div className="flex flex-wrap gap-2">
+            {assistantState.state === "waiting_for_login" && (
+              <Button onClick={prepareAssistant} disabled={assistantBusy}>
+                I&apos;m logged in — fill safe fields
+              </Button>
+            )}
+
+            {quality && (
+              <div className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-medium">Resume quality</h2>
+                  <Badge variant={quality.score >= 85 ? "secondary" : "outline"}>
+                    {quality.score}/100
+                  </Badge>
+                </div>
+                {quality.issues.length ? (
+                  <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                    {quality.issues.map((issue) => <li key={issue}>{issue}</li>)}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No structural quality issues detected.
+                  </p>
+                )}
+              </div>
+            )}
+            {assistantState.state === "ready_for_review" && (
+              <Button onClick={submitAssistant} disabled={assistantBusy}>
+                Submit after my review
+              </Button>
+            )}
+            {assistantState.state === "submitted" && (
+              <Badge variant="secondary">Submitted</Badge>
+            )}
+          </div>
+          {assistantState.blocked_fields.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Fields left for you: {assistantState.blocked_fields.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
 
       {generating && (
         <Working

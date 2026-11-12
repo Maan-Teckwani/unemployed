@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, type ChunkIn, type ParseJob } from "@/lib/api";
+import { api, type ChunkIn, type ParseJob, type ResumeProfile } from "@/lib/api";
 import { ChunkEditor, type EditableChunk } from "@/components/kb/chunk-editor";
 import { GoBackTo } from "@/components/go-back-to";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,16 @@ export default function ImportPage() {
   const [parsing, setParsing] = useState(false);
   const [job, setJob] = useState<ParseJob | null>(null);
   const [saving, setSaving] = useState(false);
+  const [profiles, setProfiles] = useState<ResumeProfile[]>([]);
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const [newProfileName, setNewProfileName] = useState("");
+
+  useEffect(() => {
+    api.listResumeProfiles().then((items) => {
+      setProfiles(items);
+      setProfileId(items.find((p) => p.is_default)?.id ?? items[0]?.id ?? null);
+    }).catch((e) => toast.error(String(e)));
+  }, []);
 
   function onFiles(list: FileList | null) {
     if (!list) return;
@@ -133,7 +143,7 @@ export default function ImportPage() {
     if (valid.length === 0) return toast.error("Nothing to save");
     setSaving(true);
     try {
-      await api.saveChunks(valid.map(toChunkIn));
+      await api.saveChunks(valid.map((chunk) => ({ ...toChunkIn(chunk), profile_id: profileId })));
       toast.success(`Saved ${valid.length} chunk(s) to your Knowledge Base`);
       router.push("/kb");
     } catch (e) {
@@ -155,6 +165,56 @@ export default function ImportPage() {
       </div>
 
       <div className="rounded-lg border p-5 space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Resume profile</label>
+          <p className="text-xs text-muted-foreground">
+            Assign these documents to a role-specific profile. Evidence without a
+            profile remains shared across all profiles.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={profileId === null ? "" : String(profileId)}
+              onValueChange={(value) => setProfileId(Number(value))}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Choose a profile" />
+              </SelectTrigger>
+              <SelectContent>
+                {profiles.map((profile) => (
+                  <SelectItem key={profile.id} value={String(profile.id)}>
+                    {profile.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <input
+              value={newProfileName}
+              onChange={(e) => setNewProfileName(e.target.value)}
+              placeholder="New profile name"
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+            />
+            <Button
+              variant="outline"
+              disabled={!newProfileName.trim()}
+              onClick={async () => {
+                try {
+                  const created = await api.createResumeProfile({
+                    name: newProfileName.trim(),
+                    target_roles: [],
+                    description: "",
+                  });
+                  setProfiles((prev) => [...prev, created]);
+                  setProfileId(created.id);
+                  setNewProfileName("");
+                } catch (e) {
+                  toast.error(String(e));
+                }
+              }}
+            >
+              Add profile
+            </Button>
+          </div>
+        </div>
         <input
           type="file"
           multiple

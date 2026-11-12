@@ -14,7 +14,14 @@ from app.ai import ats, pdf
 from app.ai.generate_resume import generate
 from app.ai.latex import tailor
 from app.ai.retrieve import retrieve_all
-from app.db.models import CandidateProfile, Job, JobRequirements, Resume, ResumeTemplate
+from app.db.models import (
+    CandidateProfile,
+    Job,
+    JobRequirements,
+    Resume,
+    ResumeProfile,
+    ResumeTemplate,
+)
 from app.db.retention import purge_expired_resumes
 from app.db.session import get_db
 from app.schemas import ResumeEditIn
@@ -25,7 +32,12 @@ GENERATED_DIR = Path(__file__).resolve().parents[2] / "generated"
 
 
 @router.post("/generate/{job_id}")
-def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_db)) -> dict:
+def generate_resume(
+    job_id: int,
+    format: str = "pdf",
+    profile_id: int | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
     """Retrieve -> generate -> validate -> render. Returns the stored resume.
 
     `format=latex` tailors the user's own template instead of rendering ours.
@@ -34,26 +46,31 @@ def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
 
-    profile = db.scalar(select(CandidateProfile))
-    if profile is None or not profile.name:
+    candidate_profile = db.scalar(select(CandidateProfile))
+    if candidate_profile is None or not candidate_profile.name:
         raise HTTPException(
             status_code=400,
             detail="Add your profile (name, email) before generating a resume.",
         )
 
     requirements = _requirements_for(db, job_id)
+    resume_profile = _profile_for(db, profile_id)
     # The whole knowledge base, most relevant first: the model should choose the
     # best evidence from everything the candidate has done, not from a top-8 slice.
-    chunks = retrieve_all(db, job.title, requirements)
+    chunks = retrieve_all(
+        db, job.title, requirements, resume_profile.id if resume_profile else None
+    )
     if not chunks:
         raise HTTPException(
             status_code=400, detail="Knowledge base is empty — import your experience first."
         )
 
     if format == "latex":
-        return _generate_latex(db, job, requirements, chunks)
+        return _generate_latex(
+            db, job, requirements, chunks, resume_profile.id if resume_profile else None
+        )
 
-    result = generate(profile, job, requirements, chunks)
+    result = generate(candidate_profile, job, requirements, chunks)
     if not result["bullets"]:
         raise HTTPException(
             status_code=422,
@@ -63,6 +80,7 @@ def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_
     report = ats.keyword_coverage(result, requirements)
     resume = Resume(
         job_id=job_id,
+        profile_id=resume_profile.id if resume_profile else None,
         headline=job.title,
         summary=result["summary"],
         skills=result["skills"],
@@ -73,8 +91,8 @@ def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_
     db.refresh(resume)
 
     pdf_path = GENERATED_DIR / f"resume_{resume.id}.pdf"
-    pdf.render(profile, result, pdf_path)
-    report.update(ats.check_pdf(pdf_path.read_bytes(), profile, result))
+    pdf.render(candidate_profile, result, pdf_path)
+    report.update(ats.check_pdf(pdf_path.read_bytes(), candidate_profile, result))
     report["rejected_bullets"] = result["rejected"]
 
     resume.pdf_path = str(pdf_path)
@@ -84,7 +102,9 @@ def generate_resume(job_id: int, format: str = "pdf", db: Session = Depends(get_
     return _as_dict(resume, db)
 
 
-def _generate_latex(db: Session, job: Job, requirements: dict, chunks: list) -> dict:
+def _generate_latex(
+    db: Session, job: Job, requirements: dict, chunks: list, profile_id: int | None = None
+) -> dict:
     """Fill the default template's sections for this job and store the document.
 
     No PDF: the document *is* the output, and the user compiles it in Overleaf
@@ -113,6 +133,7 @@ def _generate_latex(db: Session, job: Job, requirements: dict, chunks: list) -> 
     # confident-sounding rewrite naming an employer the candidate never worked for.
     resume = Resume(
         job_id=job.id,
+        profile_id=profile_id,
         headline=job.title,
         latex=document,
         bullets=_chosen_bullets(sections),
@@ -228,6 +249,17 @@ def _requirements_for(db: Session, job_id: int) -> dict:
     }
 
 
+def _profile_for(db: Session, profile_id: int | None) -> ResumeProfile | None:
+    if profile_id is not None:
+        profile = db.get(ResumeProfile, profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="resume profile not found")
+        return profile
+    return db.scalar(select(ResumeProfile).where(ResumeProfile.is_default.is_(True))) or db.scalar(
+        select(ResumeProfile).order_by(ResumeProfile.id)
+    )
+
+
 def _as_dict(resume: Resume, db: Session) -> dict:
     """Attach the source accomplishment text so the UI can prove each bullet."""
     from app.db.models import KBChunk
@@ -241,6 +273,7 @@ def _as_dict(resume: Resume, db: Session) -> dict:
     return {
         "id": resume.id,
         "job_id": resume.job_id,
+        "profile_id": resume.profile_id,
         "headline": resume.headline,
         "summary": resume.summary,
         "skills": list(resume.skills or []),
