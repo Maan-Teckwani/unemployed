@@ -200,6 +200,52 @@ for Greenhouse, Lever, Ashby, SmartRecruiters and Recruitee, or a careers link
 for Workday. The same panel can go looking for more on its own, which takes
 about five minutes.
 
+### Multiple role-specific resumes
+
+The importer accepts multiple PDF, DOCX, TXT, or Markdown files at once. In
+**Knowledge Base → Import**, choose an existing resume profile or create one
+such as **Software Developer Intern** or **Cloud Infrastructure**, then assign
+the files to it. Review the extracted accomplishments before saving.
+
+Evidence assigned to a profile is used only for that profile. Evidence saved
+without a profile remains shared and is available to every profile. When
+generating a resume for a job, select the profile in the job page; the app then
+tailors that profile's evidence to the job while keeping the existing
+traceability and ATS checks.
+
+### Assisted applications
+
+On a job page, generate a resume and choose **Apply with assistant**. The app
+opens the employer's application in a visible local Microsoft Edge window. Log
+in yourself when asked, complete any CAPTCHA, and then choose **I'm logged in —
+fill safe fields**. Only verified contact/profile fields and the selected PDF
+resume are filled automatically.
+
+The assistant never fills passwords, work-authorization, demographic,
+disability, veteran, or CAPTCHA fields. Review the page yourself and choose
+**Submit after my review** in the app before the final form submission. A
+seven-day follow-up reminder is created after a confirmed submission. The
+browser profile is local at `data/browser-profile`; no credentials are stored
+by the application.
+
+### Extended workflow tools
+
+- **Application answers** stores reusable answers and requires explicit approval
+  for sensitive categories.
+- **Analytics** shows funnel counts, response rate, interviews, offers, and
+  answer usage.
+- **Interview prep** generates grounded questions and talking points from the
+  job requirements and your verified evidence.
+- **Company intelligence** stores local notes and generates summaries only from
+  saved company/job information.
+- **New-job alerts** highlight recent high-fit roles on Apply today.
+- **Resume quality review** checks duplicate, overlong, and untraceable bullets
+  in addition to the ATS report.
+- **Privacy controls** provide local JSON export, calendar export, and an
+  explicit full-data deletion flow.
+- **Workflow settings** configure daily application goals, follow-up timing,
+  timezone, and calendar week start.
+
 <details>
 <summary>The same steps from the command line</summary>
 
