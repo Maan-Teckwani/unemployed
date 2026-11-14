@@ -58,12 +58,20 @@ function Toggle({
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<Preferences>(DEFAULTS);
   const [saving, setSaving] = useState(false);
+  const [workflow, setWorkflow] = useState({
+    daily_application_goal: 3,
+    follow_up_days: 7,
+    timezone: "UTC",
+    week_starts_monday: true,
+  });
+  const [workflowSaving, setWorkflowSaving] = useState(false);
 
   useEffect(() => {
     api
       .getPreferences()
       .then((p) => setPrefs({ ...DEFAULTS, ...p }))
       .catch(() => {});
+    api.getWorkflowSettings().then(({ id, ...settings }) => setWorkflow(settings)).catch(() => {});
   }, []);
 
   function setAllFamilies(on: boolean) {
@@ -96,6 +104,44 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
+
+  }
+
+  async function saveWorkflow() {
+    setWorkflowSaving(true);
+    try {
+      await api.updateWorkflowSettings(workflow);
+      toast.success("Workflow settings saved");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setWorkflowSaving(false);
+    }
+  }
+
+  async function downloadBackup() {
+    const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const response = await fetch(`${base}/privacy/export`);
+    if (!response.ok) throw new Error("Backup failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "job-search-backup.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function deleteData() {
+    if (prompt("Type DELETE to permanently erase local data") !== "DELETE") return;
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/privacy/data`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: "DELETE" }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(await response.text());
+    });
+    toast.success("Local data deleted");
   }
 
   return (
@@ -262,6 +308,52 @@ export default function SettingsPage() {
       </div>
 
       <CompanyManager />
+
+      <div className="rounded-lg border p-5 space-y-4">
+        <div>
+          <h2 className="font-semibold">Personal workflow</h2>
+          <p className="text-sm text-muted-foreground">
+            These defaults stay on this device and control pacing and reminders.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <label className="text-sm space-y-1">
+            <span className="block">Daily application goal</span>
+            <Input type="number" min={0} max={100} value={workflow.daily_application_goal}
+              onChange={(e) => setWorkflow((s) => ({ ...s, daily_application_goal: Number(e.target.value) }))} />
+          </label>
+          <label className="text-sm space-y-1">
+            <span className="block">Follow up after (days)</span>
+            <Input type="number" min={1} max={90} value={workflow.follow_up_days}
+              onChange={(e) => setWorkflow((s) => ({ ...s, follow_up_days: Number(e.target.value) }))} />
+          </label>
+          <label className="text-sm space-y-1">
+            <span className="block">Timezone (IANA)</span>
+            <Input value={workflow.timezone}
+              onChange={(e) => setWorkflow((s) => ({ ...s, timezone: e.target.value }))} />
+          </label>
+        </div>
+        <Toggle label="Week starts Monday" checked={workflow.week_starts_monday}
+          onChange={(v) => setWorkflow((s) => ({ ...s, week_starts_monday: v }))} />
+        <Button onClick={saveWorkflow} disabled={workflowSaving}>
+          {workflowSaving ? "Saving…" : "Save workflow settings"}
+        </Button>
+      </div>
+
+      <div className="rounded-lg border p-5 space-y-3">
+        <h2 className="font-semibold">Privacy</h2>
+        <p className="text-sm text-muted-foreground">
+          Backups download directly to your computer. Nothing is uploaded; connector credentials are excluded.
+        </p>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => downloadBackup().catch((e) => toast.error(String(e)))}>
+            Download local backup
+          </Button>
+          <Button variant="destructive" onClick={() => deleteData().catch((e) => toast.error(String(e)))}>
+            Delete all local data
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

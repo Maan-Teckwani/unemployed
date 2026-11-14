@@ -44,6 +44,7 @@ export type ChunkIn = {
   technologies: string[];
   skills: string[];
   impact: string | null;
+  profile_id?: number | null;
 };
 
 /** A running document parse. `chunks` is empty until `status` is "done". */
@@ -128,6 +129,70 @@ export type ApplicationRow = {
   applied_at: string | null;
   title: string;
   company: string;
+  profile_id: number | null;
+  resume_id: number | null;
+  application_url: string;
+  follow_up_at: string | null;
+  assistant_state: string;
+};
+
+export type ApplicationAnswer = {
+  id: number;
+  question: string;
+  answer: string;
+  category: string;
+  is_sensitive: boolean;
+  explicit_approval: boolean;
+  use_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationAnalytics = {
+  total: number;
+  by_status: Record<string, number>;
+  sent: number;
+  response_count: number;
+  response_rate: number;
+  interview_count: number;
+  offer_count: number;
+  conversion_rate: number;
+  answer_uses: number;
+};
+
+export type AssistantState = {
+  session_id: string;
+  job_id: number;
+  state: "waiting_for_login" | "ready_for_review" | "submitted";
+  message: string;
+  safe_fields_filled: number;
+  blocked_fields: string[];
+  application_url: string;
+};
+
+export type FollowUp = {
+  job_id: number;
+  title: string;
+  company: string;
+  status: Status;
+  follow_up_at: string | null;
+};
+
+export type ResumeQuality = {
+  resume_id: number;
+  score: number;
+  issues: string[];
+  duplicate_count: number;
+  long_bullets: string[];
+  untraced_bullets: string[];
+  sections: Record<string, number>;
+  ats_report: AtsReport;
+};
+
+export type JobAlert = {
+  job: Job;
+  score: number;
+  why: MatchWhy;
 };
 
 export type Match = {
@@ -243,6 +308,7 @@ export type LatexSection = {
 export type Resume = {
   id: number;
   job_id: number;
+  profile_id: number | null;
   headline: string;
   summary: string;
   skills: string[];
@@ -251,6 +317,15 @@ export type Resume = {
   latex: string;
   ats_report: AtsReport & { latex_sections?: LatexSection[] };
   sources: Record<string, { title: string; accomplishment: string }>;
+  created_at: string;
+};
+
+export type ResumeProfile = {
+  id: number;
+  name: string;
+  target_roles: string[];
+  description: string;
+  is_default: boolean;
   created_at: string;
 };
 
@@ -417,6 +492,25 @@ export type CompanySearchResult = {
   already_tracked?: boolean;
 };
 
+export type InterviewPrep = {
+  job_id: number;
+  profile_id: number | null;
+  questions: { question: string; answer: string; source_chunk_ids: number[] }[];
+  talking_points: string[];
+  source_chunk_ids: number[];
+  generated_at: string;
+};
+
+export type CompanyIntel = {
+  id: number;
+  company_name: string;
+  title: string;
+  content: string;
+  source_url: string;
+  source_type: string;
+  created_at: string;
+};
+
 export type Preferences = {
   id?: number;
   region: string;
@@ -425,6 +519,14 @@ export type Preferences = {
   role_families: string[];
   preferred_locations: string[];
   remote_ok: boolean;
+};
+
+export type WorkflowSettings = {
+  id: number;
+  daily_application_goal: number;
+  follow_up_days: number;
+  timezone: string;
+  week_starts_monday: boolean;
 };
 
 export const CONTACT_STATUSES = ["todo", "found", "contacted", "replied"] as const;
@@ -541,6 +643,10 @@ export const api = {
   listJobs: (q = "", limit = 100) =>
     req<Job[]>(`/jobs?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
   jobStats: () => req<JobStats>("/jobs/stats"),
+  jobAlerts: (sinceHours = 24, minScore = 0.65) =>
+    req<JobAlert[]>(
+      `/jobs/alerts?since_hours=${sinceHours}&min_score=${minScore}`,
+    ),
   listRuns: (limit = 20) => req<IngestionRun[]>(`/jobs/runs?limit=${limit}`),
 
   listMatches: (limit = 25, includeFiltered = false) =>
@@ -555,11 +661,31 @@ export const api = {
     req<Profile>("/profile", { method: "PUT", body: JSON.stringify(p) }),
 
   // Runs retrieval + local LLM generation — slow by nature.
-  generateResume: (jobId: number, format: "pdf" | "latex" = "pdf") =>
-    req<Resume>(`/resumes/generate/${jobId}?format=${format}`, { method: "POST" }),
+  listResumeProfiles: () => req<ResumeProfile[]>("/resume-profiles"),
+  createResumeProfile: (body: {
+    name: string;
+    target_roles: string[];
+    description: string;
+  }) =>
+    req<ResumeProfile>("/resume-profiles", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  generateResume: (
+    jobId: number,
+    format: "pdf" | "latex" = "pdf",
+    profileId?: number,
+  ) =>
+    req<Resume>(
+      `/resumes/generate/${jobId}?format=${format}${
+        profileId ? `&profile_id=${profileId}` : ""
+      }`,
+      { method: "POST" },
+    ),
   resumeForJob: (jobId: number) => req<Resume | null>(`/resumes/for-job/${jobId}`),
   resumePdfUrl: (resumeId: number) => `${BASE}/resumes/${resumeId}/pdf`,
   resumeLatexUrl: (resumeId: number) => `${BASE}/resumes/${resumeId}/latex`,
+  resumeQuality: (resumeId: number) => req<ResumeQuality>(`/resumes/${resumeId}/quality`),
 
   listTemplates: () => req<ResumeTemplate[]>("/templates"),
   createTemplate: (name: string, source: string) =>
@@ -581,9 +707,34 @@ export const api = {
       `/applications/${jobId}`,
       { method: "PUT", body: JSON.stringify({ status, notes }) },
     ),
+  startApplicationAssistant: (
+    jobId: number,
+    profileId?: number,
+    resumeId?: number,
+  ) =>
+    req<AssistantState>(`/applications/${jobId}/assistant/start`, {
+      method: "POST",
+      body: JSON.stringify({ profile_id: profileId ?? null, resume_id: resumeId ?? null }),
+    }),
+  prepareApplicationAssistant: (sessionId: string) =>
+    req<AssistantState>(`/applications/assistant/${sessionId}/prepare`, {
+      method: "POST",
+    }),
+  submitApplicationAssistant: (sessionId: string) =>
+    req<AssistantState>(`/applications/assistant/${sessionId}/submit`, {
+      method: "POST",
+    }),
+  followUps: () =>
+    req<FollowUp[]>("/applications/follow-ups"),
   applicationStats: () =>
     req<Record<Status, number> & { pile: number }>("/applications/stats"),
   listApplications: () => req<ApplicationRow[]>("/applications"),
+  applicationAnalytics: () => req<ApplicationAnalytics>("/applications/analytics"),
+  listApplicationAnswers: () => req<ApplicationAnswer[]>("/application-answers"),
+  createApplicationAnswer: (body: Omit<ApplicationAnswer, "id" | "use_count" | "created_at" | "updated_at">) =>
+    req<ApplicationAnswer>("/application-answers", { method: "POST", body: JSON.stringify(body) }),
+  deleteApplicationAnswer: (id: number) =>
+    req<void>(`/application-answers/${id}`, { method: "DELETE" }),
 
   // Creates the job, then runs extraction + scoring inline (~30s).
   projectIdea: (jobId: number) => req<ProjectIdea | null>(`/projects/${jobId}`),
@@ -630,6 +781,29 @@ export const api = {
   }),
   removeCompany: (id: number) =>
     req<void>(`/companies/${id}`, { method: "DELETE" }),
+  getInterviewPrep: (jobId: number) =>
+    req<InterviewPrep | null>(`/jobs/${jobId}/interview-prep`),
+  generateInterviewPrep: (jobId: number, profileId?: number) =>
+    req<InterviewPrep>(`/jobs/${jobId}/interview-prep`, {
+      method: "POST",
+      body: JSON.stringify({ profile_id: profileId ?? null }),
+    }),
+  companyIntelligence: (name: string) =>
+    req<{ company_name: string; facts: CompanyIntel[]; jobs: JobDetail[] }>(
+      `/company-intelligence/${encodeURIComponent(name)}`,
+    ),
+  addCompanyIntel: (body: {
+    company_name: string; title: string; content: string;
+    source_url?: string; source_type?: string;
+  }) => req<CompanyIntel>("/company-intelligence", {
+    method: "POST", body: JSON.stringify(body),
+  }),
+  summarizeCompany: (name: string) =>
+    req<{ company_name: string; overview: string; themes: string[];
+      interview_signals: string[]; source_ids: number[] }>(
+      `/company-intelligence/${encodeURIComponent(name)}/summarize`,
+      { method: "POST" },
+    ),
 
   getPreferences: () => req<Preferences>("/preferences"),
   // Fetched, not bundled. The same list decides which jobs are ingested at all,
@@ -643,6 +817,12 @@ export const api = {
   rescore: () =>
     req<{ scored: number; filtered: number }>("/preferences/rescore", {
       method: "POST",
+    }),
+  getWorkflowSettings: () => req<WorkflowSettings>("/workflow-settings"),
+  updateWorkflowSettings: (settings: Omit<WorkflowSettings, "id">) =>
+    req<WorkflowSettings>("/workflow-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
     }),
 
   createManualJob: (body: {

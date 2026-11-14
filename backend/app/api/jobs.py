@@ -5,13 +5,13 @@ view exists so ingestion problems are visible immediately instead of silently
 poisoning everything downstream.
 """
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import IngestionRun, Job
+from app.db.models import IngestionRun, Job, Match
 from app.db.session import get_db
 from app.ingestion.enrich import enrich_one
 from app.schemas import IngestionRunOut, JobDetailOut, JobOut, ManualJobIn
@@ -88,6 +88,37 @@ def stats(db: Session = Depends(get_db)) -> dict:
         "expired": by_status.get("expired", 0),
         "companies": companies,
     }
+
+
+@router.get("/alerts")
+def alerts(
+    since_hours: int = 24,
+    min_score: float = 0.65,
+    limit: int = 25,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Return newly ingested, rankable jobs worth an explicit user review."""
+    since_hours = max(1, min(since_hours, 24 * 30))
+    stmt = (
+        select(Job, Match)
+        .join(Match, Match.job_id == Job.id)
+        .where(
+            Job.status == "active",
+            Job.first_seen >= datetime.now(UTC) - timedelta(hours=since_hours),
+            Match.hard_filtered.is_(False),
+            Match.score >= min_score,
+        )
+        .order_by(Match.score.desc(), Job.first_seen.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    return [
+        {
+            "job": JobOut.model_validate(job).model_dump(),
+            "score": match.score,
+            "why": match.why,
+        }
+        for job, match in db.execute(stmt).all()
+    ]
 
 
 @router.get("/runs", response_model=list[IngestionRunOut])

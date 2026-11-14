@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.api import (
     applications,
+    application_answers,
     companies,
+    interview,
     jobs,
     kb,
     matches,
@@ -22,9 +24,13 @@ from app.api import (
     profile,
     projects,
     resumes,
+    resume_profiles,
     roadmap,
     setup,
     templates,
+    workflow,
+    privacy,
+    quality,
 )
 from app.db.retention import start_sweeper
 from app.db.session import get_db
@@ -61,16 +67,22 @@ app.include_router(kb.router)
 app.include_router(jobs.router)
 app.include_router(matches.router)
 app.include_router(resumes.router)
+app.include_router(resume_profiles.router)
 app.include_router(applications.router)
+app.include_router(application_answers.router)
 app.include_router(preferences.router)
 app.include_router(outreach.router)
 app.include_router(projects.router)
 app.include_router(companies.router)
+app.include_router(interview.router)
 app.include_router(pipeline.router)
 app.include_router(setup.router)
 app.include_router(templates.router)
 app.include_router(profile.router)
 app.include_router(roadmap.router)
+app.include_router(workflow.router)
+app.include_router(privacy.router)
+app.include_router(quality.router)
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)) -> dict:

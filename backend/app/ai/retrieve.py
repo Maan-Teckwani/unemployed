@@ -30,7 +30,9 @@ from app.db.models import KBChunk
 RRF_K = 60
 
 
-def retrieve_all(db: Session, job_title: str, requirements: dict) -> list[KBChunk]:
+def retrieve_all(
+    db: Session, job_title: str, requirements: dict, profile_id: int | None = None
+) -> list[KBChunk]:
     """Every chunk in the knowledge base, most relevant to this job first.
 
     Resume writing wants the whole career on the table: a real accomplishment
@@ -39,14 +41,20 @@ def retrieve_all(db: Session, job_title: str, requirements: dict) -> list[KBChun
     a small model pays most attention to what it reads first — so this is the
     same fused ranking as `retrieve`, just without the cutoff.
     """
-    ranked = retrieve(db, job_title, requirements, k=None)
+    ranked = retrieve(db, job_title, requirements, k=None, profile_id=profile_id)
     seen = {c.id for c in ranked}
-    rest = [c for c in db.scalars(select(KBChunk)) if c.id not in seen]
+    rest = [
+        c for c in _profile_chunks(db, profile_id) if c.id not in seen
+    ]
     return ranked + rest
 
 
 def retrieve(
-    db: Session, job_title: str, requirements: dict, k: int | None = 8
+    db: Session,
+    job_title: str,
+    requirements: dict,
+    k: int | None = 8,
+    profile_id: int | None = None,
 ) -> list[KBChunk]:
     """Return the k most relevant KB chunks for this job, best first.
 
@@ -59,30 +67,43 @@ def retrieve(
         [job_title, *requirements.get("responsibilities", [])[:5], *skills[:15]]
     ).strip()
 
-    limit = k * 2 if k is not None else _total(db)
-    semantic = _vector_search(db, query or job_title, limit=limit)
-    lexical = _lexical_search(db, skills, job_title, limit=limit)
+    limit = k * 2 if k is not None else _total(db, profile_id)
+    semantic = _vector_search(db, query or job_title, limit=limit, profile_id=profile_id)
+    lexical = _lexical_search(db, skills, job_title, limit=limit, profile_id=profile_id)
     fused = _fuse(semantic, lexical)
     return fused if k is None else fused[:k]
 
 
-def _total(db: Session) -> int:
-    return db.scalar(select(func.count()).select_from(KBChunk)) or 0
+def _profile_chunks(db: Session, profile_id: int | None) -> list[KBChunk]:
+    query = select(KBChunk)
+    if profile_id is not None:
+        query = query.where((KBChunk.profile_id.is_(None)) | (KBChunk.profile_id == profile_id))
+    return list(db.scalars(query))
 
 
-def _vector_search(db: Session, query: str, limit: int) -> list[KBChunk]:
+def _total(db: Session, profile_id: int | None = None) -> int:
+    return len(_profile_chunks(db, profile_id))
+
+
+def _vector_search(
+    db: Session, query: str, limit: int, profile_id: int | None = None
+) -> list[KBChunk]:
     """Meaning-based arm: nearest chunks by cosine similarity.
 
     An exact scan in numpy rather than a database index — the knowledge base is
     one person's career, so this ranks tens of rows (see `app.ai.vectors`).
     """
     qvec = embed_query(query)
-    chunks = list(db.scalars(select(KBChunk)))
+    chunks = _profile_chunks(db, profile_id)
     return [chunk for chunk, _ in vectors.rank(qvec, chunks)[:limit]]
 
 
 def _lexical_search(
-    db: Session, skills: list[str], job_title: str, limit: int
+    db: Session,
+    skills: list[str],
+    job_title: str,
+    limit: int,
+    profile_id: int | None = None,
 ) -> list[KBChunk]:
     """Exactness arm: rank chunks by how many required terms they literally contain.
 
@@ -96,7 +117,7 @@ def _lexical_search(
         return []
 
     scored = []
-    for chunk in db.scalars(select(KBChunk)):
+    for chunk in _profile_chunks(db, profile_id):
         haystack = _norm(
             " ".join(
                 [

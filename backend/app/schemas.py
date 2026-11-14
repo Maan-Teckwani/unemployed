@@ -1,5 +1,6 @@
 """Pydantic request/response models for the API boundary."""
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,7 @@ class KBItemIn(BaseModel):
     company: str | None = None
     date_range: str | None = None
     accomplishments: list[AccomplishmentIn] = Field(min_length=1)
+    profile_id: int | None = None
 
 
 class KBChunkOut(BaseModel):
@@ -59,6 +61,21 @@ class ChunkIn(BaseModel):
     technologies: list[str] = []
     skills: list[str] = []
     impact: str | None = None
+    profile_id: int | None = None
+
+
+class ResumeProfileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    target_roles: list[str] = []
+    description: str = ""
+
+
+class ResumeProfileOut(ResumeProfileIn):
+    id: int
+    is_default: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ---- Jobs --------------------------------------------------------------------
@@ -142,6 +159,58 @@ class ResumeTemplateIn(BaseModel):
 class ApplicationIn(BaseModel):
     status: str = "todo"
     notes: str = ""
+    profile_id: int | None = None
+    resume_id: int | None = None
+    application_url: str = ""
+    follow_up_at: datetime | None = None
+
+
+class ApplicationAnswerIn(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    answer: str = Field(min_length=1)
+    category: str = Field(default="general", max_length=40)
+    is_sensitive: bool = False
+    explicit_approval: bool = False
+
+
+class ApplicationAnswerOut(ApplicationAnswerIn):
+    id: int
+    use_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ApplicationAnswerUseIn(BaseModel):
+    job_id: int | None = None
+
+
+class ApplicationAnalyticsOut(BaseModel):
+    total: int
+    by_status: dict[str, int]
+    sent: int
+    response_count: int
+    response_rate: float
+    interview_count: int
+    offer_count: int
+    conversion_rate: float
+    answer_uses: int
+
+
+class AssistantStartIn(BaseModel):
+    profile_id: int | None = None
+    resume_id: int | None = None
+
+
+class AssistantStateOut(BaseModel):
+    session_id: str
+    job_id: int
+    state: str
+    message: str
+    safe_fields_filled: int = 0
+    blocked_fields: list[str] = []
+    application_url: str
 
 
 class ManualJobIn(BaseModel):
@@ -171,6 +240,28 @@ class PreferencesOut(PreferencesIn):
     model_config = {"from_attributes": True}
 
 
+class WorkflowSettingsIn(BaseModel):
+    daily_application_goal: int = Field(default=3, ge=0, le=100)
+    follow_up_days: int = Field(default=7, ge=1, le=90)
+    timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    week_starts_monday: bool = True
+
+    def model_post_init(self, __context: object) -> None:
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+
+
+class WorkflowSettingsOut(WorkflowSettingsIn):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class DeleteDataIn(BaseModel):
+    confirmation: str
+
+
 class CityOut(BaseModel):
     """One place the settings dropdown can offer."""
 
@@ -193,6 +284,35 @@ class CompanyIn(BaseModel):
     token: str
     name: str = ""
     matched_jobs: int = 0
+
+
+class InterviewPrepIn(BaseModel):
+    profile_id: int | None = None
+
+
+class CompanyIntelIn(BaseModel):
+    company_name: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="", max_length=300)
+    content: str = Field(min_length=10)
+    source_url: str = ""
+    source_type: str = "user_note"
+
+
+class InterviewQuestion(BaseModel):
+    question: str
+    answer: str
+    source_chunk_ids: list[int] = []
+
+
+class InterviewPrepOut(BaseModel):
+    job_id: int
+    profile_id: int | None
+    questions: list[InterviewQuestion]
+    talking_points: list[str]
+    source_chunk_ids: list[int]
+    generated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ---- Profile -----------------------------------------------------------------

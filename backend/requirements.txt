@@ -38,5 +38,8 @@ python-docx>=1.1.2
 # ATS-safe PDF generation (pure Python — no GTK/browser system deps)
 fpdf2>=2.8.2
 
+# Visible, local browser for the human-approved application assistant.
+playwright>=1.50.0
+
 # Tests
 pytest>=8.3.4

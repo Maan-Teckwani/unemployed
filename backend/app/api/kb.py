@@ -45,6 +45,7 @@ def add_item(item: KBItemIn, db: Session = Depends(get_db)) -> list[KBChunk]:
             technologies=acc.technologies,
             skills=acc.skills,
             impact=acc.impact,
+            profile_id=item.profile_id if hasattr(item, "profile_id") else None,
             embedding=embed_passage(text),
         )
         db.add(chunk)
@@ -138,6 +139,7 @@ def save_chunks(chunks: list[ChunkIn], db: Session = Depends(get_db)) -> list[KB
             technologies=c.technologies,
             skills=c.skills,
             impact=c.impact,
+            profile_id=c.profile_id,
             embedding=embed_passage(text),
         )
         db.add(row)

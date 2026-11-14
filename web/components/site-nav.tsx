@@ -22,6 +22,8 @@ const PRIMARY = [
   { href: "/roadmap", label: "Skills & Roadmap" },
   { href: "/manual-jd", label: "Paste JD" },
   { href: "/board", label: "Board" },
+  { href: "/application-answers", label: "Answers" },
+  { href: "/application-analytics", label: "Analytics" },
 ];
 
 export function SiteNav() {

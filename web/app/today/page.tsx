@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, ViewTransition } from "react";
-import { api, type Match, type Status } from "@/lib/api";
+import { api, type FollowUp, type JobAlert, type Match, type Status } from "@/lib/api";
 import { remember } from "@/lib/job-cache";
 import { gsap, OK, ScrollTrigger, STAGGER, useGSAP } from "@/lib/motion";
 import { scoreTone } from "@/lib/score";
@@ -28,6 +28,8 @@ export default function TodayPage() {
   const [hideDone, setHideDone] = useRemembered("today.hideDone", true);
   const [showFiltered, setShowFiltered] = useRemembered("today.showFiltered", false);
   const [loading, setLoading] = useState(true);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [alerts, setAlerts] = useState<JobAlert[]>([]);
   const list = useRef<HTMLDivElement>(null);
 
   // The remembered toggle arrives one render after mount, so two requests can be
@@ -50,6 +52,11 @@ export default function TodayPage() {
       current = false;
     };
   }, [showFiltered]);
+
+  useEffect(() => {
+    api.followUps().then(setFollowUps).catch(() => {});
+    api.jobAlerts().then(setAlerts).catch(() => {});
+  }, []);
 
   function setStatus(jobId: number, status: Status) {
     setMatches((prev) =>
@@ -150,6 +157,41 @@ export default function TodayPage() {
                       >
                         estimated
                       </Badge>
+                    )}
+
+                    {followUps.length > 0 && (
+                      <section className="rounded-lg border p-4 space-y-3">
+                        <h2 className="font-medium">Follow-ups due</h2>
+                        <div className="space-y-2">
+                          {followUps.map((followUp) => (
+                            <Link
+                              key={followUp.job_id}
+                              href={`/jobs/${followUp.job_id}`}
+                              className="block text-sm hover:underline"
+                            >
+                              {followUp.company} · {followUp.title}
+                            </Link>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {alerts.length > 0 && (
+                      <section className="rounded-lg border p-4 space-y-3">
+                        <h2 className="font-medium">New high-fit jobs</h2>
+                        <div className="space-y-2">
+                          {alerts.map((alert) => (
+                            <Link
+                              key={alert.job.id}
+                              href={`/jobs/${alert.job.id}`}
+                              className="flex items-center justify-between gap-3 text-sm hover:underline"
+                            >
+                              <span>{alert.job.company} · {alert.job.title}</span>
+                              <span className="data">{Math.round(alert.score * 100)}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </section>
                     )}
                     {m.hard_filtered && (
                       <Badge variant="outline">filtered: {m.filter_reason}</Badge>
